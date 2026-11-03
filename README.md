@@ -116,8 +116,8 @@ Flat, pill-shaped controls in a dark slate theme with the logo's fire palette: o
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/gui-appearance.png" alt="Appearance page"><br><sub><b>Appearance:</b> render mode, bar shape, fire, colors and presets, with a live preview</sub></td>
-    <td width="50%"><img src="docs/images/gui-layout.png" alt="Layout page"><br><sub><b>Layout:</b> a placement diagram plus edge, alignment, size, offsets and layer</sub></td>
+    <td width="50%"><img src="docs/images/gui-appearance.png" alt="Appearance page"><br><sub><b>Appearance:</b> render mode tiles, bar shape, fire, colors and presets, with a live preview</sub></td>
+    <td width="50%"><img src="docs/images/gui-layout.png" alt="Layout page"><br><sub><b>Layout:</b> a placement diagram plus edge, grow direction, alignment, size (or full screen height), offsets and layer</sub></td>
   </tr>
   <tr>
     <td><img src="docs/images/gui-motion.png" alt="Motion page"><br><sub><b>Motion:</b> genre presets, attack/decay physics, peak gravity, idle fade, cava analysis</sub></td>
@@ -173,7 +173,7 @@ Set `IRON_WILL_DEBUG=1` for verbose logs.
 
 Everything is stored in one commented file, `~/.config/iron-will/config.toml` (see [`config/config.example.toml`](config/config.example.toml)). You can edit it by hand or in the GUI. Both components pick up changes live. Invalid values fall back to their defaults and never crash anything.
 
-Main groups: `[visualizer]` (mode, bars, spacing, roundness, colors, opacity, fps), `[motion]` (attack/decay, peak physics, idle fade), `[layout]` (edge, alignment, size or full screen height, offsets, layer), `[analysis]` (cava sensitivity, frequency range) and `[sounds]` (folder, events, delays, cooldown, volume, player).
+Main groups: `[visualizer]` (mode, bars, spacing, roundness, colors, opacity, fps), `[motion]` (attack/decay, peak physics, idle fade), `[layout]` (edge, grow direction, alignment, size or full screen height, offsets, layer), `[analysis]` (cava sensitivity, frequency range) and `[sounds]` (folder, events, delays, cooldown, volume, player).
 
 ## Architecture
 
@@ -209,12 +209,16 @@ Key design decisions:
 iron_will/
   config.py  presets.py  paths.py  accent.py  util.py  qtcommon.py
   dispatcher/   player.py  daemon.py  notify.py  chime.py
-  visualizer/   cava.py  physics.py  fire.py  demo.py  renderer.py  layout.py  guardian.py  lockwatch.py  app.py
+  visualizer/   modes.py  cava.py  physics.py  fire.py  demo.py  renderer.py  layout.py  guardian.py  lockwatch.py  app.py
                 qml/{Visualizer.qml, WaylandWindow.qml, X11Window.qml}  shaders/{fire.frag, fire.frag.qsb, build.sh}
   settings/     backend.py  app.py  qml/{Main.qml, components/, pages/}
-  assets/iron-will.svg
+  assets/iron-will.svg  assets/modes/{bars, mirror, wave, fire}.svg
 systemd/  desktop/  config/config.example.toml  install.sh  uninstall.sh
 ```
+
+### Adding a visualizer
+
+Render modes live in one registry, `iron_will/visualizer/modes.py`. Add a `RenderMode` (id, name, tagline, icon) and an SVG icon in `assets/modes/` (64×64 viewBox, plain paths and gradients, no filters), then give it a renderer. The config schema and the settings app's mode tiles pick it up from the registry.
 
 ## Troubleshooting
 

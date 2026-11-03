@@ -24,7 +24,7 @@ from PySide6.QtQml import QJSValue
 from .. import __version__, config, paths, presets
 from ..dispatcher.player import (STOPPED, Player, list_tracks, now_playing, pick_track, request_stop,
                                 resolve_chain)
-from ..visualizer import layout
+from ..visualizer import layout, modes
 
 log = logging.getLogger("iron_will.settings")
 
@@ -128,6 +128,12 @@ class SettingsBackend(QObject):
     def resetSection(self, section: str) -> None:
         self._store.reset([f.path for f in config.FIELDS if f.section == section])
         self.toast.emit(f"Restored defaults for {config.SECTIONS[section].split('·')[-1].strip().lower()}", "info")
+
+    # ── render modes (from the registry: one tile per visualizer) ─────────
+    renderModes = Property("QVariantList", lambda s: [
+        {"id": m.id, "name": m.name, "tagline": m.tagline,
+         "icon": "image://modeicon/" + m.id}   # see settings/icons.py
+        for m in modes.MODES], constant=True)
 
     # ── genre presets ─────────────────────────────────────────────────────
     genrePresets = Property("QVariantList", lambda s: [

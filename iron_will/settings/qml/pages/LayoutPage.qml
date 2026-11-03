@@ -103,6 +103,10 @@ PageScaffold {
         subtitle: "Anchor to an edge, then nudge with offsets"
 
         SegmentedRow { key: "layout.anchor"; label: "Screen edge" }
+        SegmentedRow {
+            key: "layout.direction"; label: "Grow direction"
+            description: page.v("visualizer.mode") === "fire" ? "Which way the flames rise" : "Which way the bars grow"
+        }
         SegmentedRow { key: "layout.align"; label: "Alignment" }
         Divider {}
         SliderRow {

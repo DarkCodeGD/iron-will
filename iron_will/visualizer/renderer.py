@@ -152,7 +152,7 @@ class VisualizerItem(QQuickPaintedItem):
     # look: x = max flame height, y = spark amount, z = 1 if flames grow up (w = aspect, set in QML)
     fireLook = Property(QVector4D, lambda self: QVector4D(
         self._cfg["fire.height"], self._cfg["fire.sparks"],
-        1.0 if self._cfg["visualizer.direction"] == "up" else 0.0, 0.0), notify=fireStyleChanged)
+        1.0 if self._cfg["layout.direction"] == "up" else 0.0, 0.0), notify=fireStyleChanged)
     fireTranslucency = Property(float, lambda self: self._cfg["fire.translucency"], notify=fireStyleChanged)
     fireColsA = Property(QVector4D, lambda self: _vec4(self._fire.columns, 0), notify=fireFrame)
     fireColsB = Property(QVector4D, lambda self: _vec4(self._fire.columns, 4), notify=fireFrame)
@@ -285,7 +285,7 @@ class VisualizerItem(QQuickPaintedItem):
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setOpacity(alpha)
 
-        up = c["visualizer.direction"] == "up"
+        up = c["layout.direction"] == "up"
         brush = self._get_brush(w, h, up)
         values, peaks = self._physics.values, self._physics.peaks
         mode = c["visualizer.mode"]

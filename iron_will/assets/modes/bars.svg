@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Iron Will · render mode "Bars": spectrum bars, bass on the left, with
+       two peak caps hanging above. Ascend palette: crimson foot → orange → gold tip. -->
+  <defs>
+    <linearGradient id="bar" gradientUnits="userSpaceOnUse" x1="0" y1="56" x2="0" y2="8">
+      <stop offset="0" stop-color="#E8262E"/>
+      <stop offset="0.55" stop-color="#FF8A1F"/>
+      <stop offset="1" stop-color="#FFC85A"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#bar)">
+    <rect x="5" y="24" width="8" height="32" rx="2.5"/>
+    <rect x="16" y="12" width="8" height="44" rx="2.5"/>
+    <rect x="27" y="30" width="8" height="26" rx="2.5"/>
+    <rect x="38" y="20" width="8" height="36" rx="2.5"/>
+    <rect x="49" y="38" width="8" height="18" rx="2.5"/>
+  </g>
+  <!-- peak caps -->
+  <g fill="#FFC85A">
+    <rect x="16" y="5" width="8" height="3" rx="1.5"/>
+    <rect x="38" y="13" width="8" height="3" rx="1.5"/>
+  </g>
+</svg>

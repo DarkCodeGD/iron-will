@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from . import paths
+from .visualizer.modes import MODE_IDS
 
 log = logging.getLogger("iron_will.config")
 
@@ -116,14 +117,19 @@ SECTIONS: dict[str, str] = {
     "sounds": "Session sounds",
 }
 
+# Keys that moved between sections: new path → old path. Old configs are
+# read from the old place until the next save writes the new one.
+MOVED: dict[str, str] = {
+    "layout.direction": "visualizer.direction",
+}
+
 FIELDS: tuple[Field, ...] = (
     # Look
-    Field("visualizer", "mode", "bars", "Render style", choices=("bars", "mirror", "wave", "fire")),
+    Field("visualizer", "mode", "bars", "Render style", choices=MODE_IDS),
     Field("visualizer", "bar_count", 64, "Number of bars / wave points", 8, 256),
     Field("visualizer", "spacing", 4, "Gap between bars in pixels", 0, 32),
     Field("visualizer", "roundness", 1.0, "Bar corner rounding: 0 = square, 1 = fully pill-shaped", 0.0, 1.0),
     Field("visualizer", "min_height", 2, "Resting bar height in pixels while audio is playing", 0, 20),
-    Field("visualizer", "direction", "up", "Which way bars grow", choices=("up", "down")),
     Field("visualizer", "opacity", 0.9, "Overall opacity", 0.05, 1.0),
     Field("visualizer", "color_source", "accent", "Colors: follow the Plasma accent color, or use the custom list",
           choices=("accent", "custom")),
@@ -151,6 +157,7 @@ FIELDS: tuple[Field, ...] = (
     Field("motion", "idle_timeout", 4.0, "Seconds of silence before fading out", 0.5, 60.0),
     # Layout
     Field("layout", "anchor", "bottom", "Screen edge to attach to", choices=("bottom", "top")),
+    Field("layout", "direction", "up", "Which way bars and flames grow", choices=("up", "down")),
     Field("layout", "align", "center", "Horizontal alignment", choices=("left", "center", "right", "stretch")),
     Field("layout", "width", 960, "Width in logical pixels (ignored when align = stretch)", 50, 7680),
     Field("layout", "height", 90, "Height in logical pixels", 16, 2160),
@@ -210,12 +217,25 @@ def loads(text: str) -> dict[str, Any]:
     for field in FIELDS:
         section = data.get(field.section)
         if not isinstance(section, dict) or field.key not in section:
-            continue
+            section = _moved_from(data, field.path)
+            if section is None:
+                continue
         try:
             values[field.path] = field.coerce(section[field.key])
         except (ValueError, TypeError) as exc:
             log.warning("%s — using default %r", exc, field.default)
     return values
+
+
+def _moved_from(data: dict, path: str) -> dict | None:
+    """The old section still holding a key that has since moved (see MOVED),
+    so configs written by older versions keep their setting."""
+    old = MOVED.get(path)
+    if old is None:
+        return None
+    sec, key = old.split(".", 1)
+    section = data.get(sec)
+    return {path.split(".", 1)[1]: section[key]} if isinstance(section, dict) and key in section else None
 
 
 def load(path: Path | None = None, *, fallback: bool = False) -> dict[str, Any]:

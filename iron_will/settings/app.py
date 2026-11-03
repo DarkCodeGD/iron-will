@@ -17,6 +17,7 @@ from ..qtcommon import ConfigStore, install_signal_handlers
 from ..util import setup_logging
 from ..visualizer.renderer import register_qml_types
 from .backend import SettingsBackend
+from .icons import ModeIconProvider
 
 log = logging.getLogger("iron_will.settings")
 QML_DIR = Path(__file__).resolve().parent / "qml"
@@ -43,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     backend = SettingsBackend(store, app)
 
     engine = QQmlApplicationEngine()
+    engine.addImageProvider("modeicon", ModeIconProvider())
     engine.rootContext().setContextProperty("backend", backend)
     engine.rootContext().setContextProperty("configStore", store)
     engine.load(QUrl.fromLocalFile(str(QML_DIR / "Main.qml")))

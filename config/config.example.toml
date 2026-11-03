@@ -14,8 +14,6 @@ spacing = 4
 roundness = 1.0
 # Resting bar height in pixels while audio is playing — 0 … 20
 min_height = 2
-# Which way bars grow — up | down
-direction = "up"
 # Overall opacity — 0.05 … 1
 opacity = 0.9
 # Colors: follow the Plasma accent color, or use the custom list — accent | custom
@@ -67,6 +65,8 @@ palette = "colors"
 [layout]
 # Screen edge to attach to — bottom | top
 anchor = "bottom"
+# Which way bars and flames grow — up | down
+direction = "up"
 # Horizontal alignment — left | center | right | stretch
 align = "center"
 # Width in logical pixels (ignored when align = stretch) — 50 … 7680

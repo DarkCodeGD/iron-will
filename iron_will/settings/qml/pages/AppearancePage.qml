@@ -16,12 +16,6 @@ PageScaffold {
     readonly property int windowHeight: { rev; return backend.get("layout.height") }
     readonly property bool fullHeight: { rev; return backend.get("layout.full_height") }
     readonly property bool naturalFire: { rev; return backend.get("fire.palette") === "natural" }
-    readonly property var modeHints: ({
-        bars: "Classic spectrum bars, bass on the left",
-        mirror: "Mirror puts the bass in the middle",
-        wave: "A smooth line through every band",
-        fire: "GPU flames: every hit ignites the fire, guitars feed it, cymbals throw sparks"
-    })
 
     PreviewCard {}
 
@@ -30,8 +24,7 @@ PageScaffold {
         subtitle: "Shape of the visualization"
         iconName: "bars"
 
-        SegmentedRow { key: "visualizer.mode"; label: "Render mode"; description: page.modeHints[page.mode] || "" }
-        SegmentedRow { key: "visualizer.direction"; label: page.fire ? "Flame direction" : "Grow direction" }
+        ModePicker {}
         Divider {}
         SliderRow {
             key: "visualizer.bar_count"; label: page.mode === "wave" ? "Wave points" : "Bar count"; stepSize: 1

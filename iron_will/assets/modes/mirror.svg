@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Iron Will · render mode "Mirror": the spectrum mirrored around the
+       centre, so the bass (the tallest bar) sits in the middle. -->
+  <defs>
+    <linearGradient id="bar" gradientUnits="userSpaceOnUse" x1="0" y1="56" x2="0" y2="8">
+      <stop offset="0" stop-color="#E8262E"/>
+      <stop offset="0.55" stop-color="#FF8A1F"/>
+      <stop offset="1" stop-color="#FFC85A"/>
+    </linearGradient>
+  </defs>
+  <g fill="url(#bar)">
+    <rect x="4" y="44" width="5.5" height="12" rx="2"/>
+    <rect x="12" y="34" width="5.5" height="22" rx="2"/>
+    <rect x="20" y="22" width="5.5" height="34" rx="2"/>
+    <rect x="28.5" y="10" width="7" height="46" rx="2.5"/>
+    <rect x="38.5" y="22" width="5.5" height="34" rx="2"/>
+    <rect x="46.5" y="34" width="5.5" height="22" rx="2"/>
+    <rect x="54.5" y="44" width="5.5" height="12" rx="2"/>
+  </g>
+  <!-- peak caps, mirrored too -->
+  <g fill="#FFC85A">
+    <rect x="12" y="27" width="5.5" height="3" rx="1.5"/>
+    <rect x="46.5" y="27" width="5.5" height="3" rx="1.5"/>
+  </g>
+</svg>
