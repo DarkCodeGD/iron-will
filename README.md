@@ -33,7 +33,7 @@
   <img src="docs/images/desktop.jpg" alt="Iron Will visualizer running on a KDE Plasma 6 desktop, sitting just above the panel">
 </p>
 
-Four render modes, all anchored right above the Plasma panel and click-through:
+Five render modes, all anchored right above the Plasma panel and click-through:
 
 | | |
 |---|---|
@@ -41,6 +41,7 @@ Four render modes, all anchored right above the Plasma panel and click-through:
 | **Wave** · smooth curve with a custom gradient | <img src="docs/images/desktop-wave.jpg" alt="Wave mode"> |
 | **Mirror** · bass in the middle, with falling peak caps | <img src="docs/images/desktop-mirror.jpg" alt="Mirror mode"> |
 | **Fire** · GPU flames that surge on every kick (see [Fire mode](#fire-mode)) | <img src="docs/images/desktop-fire.jpg" alt="Fire mode"> |
+| **Ferrofluid** · glossy black magnetic liquid the bass pulls into spikes (see [Ferrofluid mode](#ferrofluid-mode)) | <img src="docs/images/desktop-ferro.jpg" alt="Ferrofluid mode"> |
 
 ## Fire mode
 
@@ -70,6 +71,24 @@ Fire has its own dynamics: the Motion page's attack and decay shape the bars, no
 - **Height:** fire needs room. It comes alive at 220–300 px, and the Fire card offers a one-click resize when your visualizer is shorter. Tongues that reach the top of the window fade out instead of being cut off. For real headroom, turn on **Full screen height** (Layout page, or `full_height` in `[layout]`): the window spans the whole screen and the fire keeps its size (Flame height is rescaled for you), so tall licks, glow and embers have open sky. The window stays click-through, and the sky above the fire is cheap: the shader skips its turbulence there.
 - **Cost:** about 8% of one CPU core in testing (bars: ~46% at the same size), because the GPU draws every pixel. Like the other modes, it stops completely after the idle fade.
 - **No GPU?** On a software-rendered desktop, fire mode falls back to bars.
+
+## Ferrofluid mode
+
+A pool of glossy black magnetic liquid along the bottom of the screen, drawn by a GPU shader. Picture ferrofluid sitting on an electromagnet that the music drives: above a critical field, the flat surface pulls up into a crown of spikes (the same instability that gives real ferrofluid its spikes).
+
+| In the mix | In the liquid |
+|---|---|
+| **Kick drum, bass** | *surge*: the magnet kicks and every spike snaps up, tallest over the magnet in the middle, while the backlight flashes |
+| **Rhythm guitars, vocals** | the *field*: holds a forest of spikes up for as long as the riff plays, and raises the pool |
+| **Snare, cymbals** | *shimmer*: the surface ripples and the tips sway and quiver |
+
+The liquid has mass and surface tension: spikes ride under-damped springs, so they shoot up, overshoot, wobble and slump back into the pool. Neighbouring spikes are joined by smooth liquid valleys, and small secondary spikes grow between the big ones when the field is strong. Like fire, it reacts to *hits*, not loudness, so brick-wall mastered metal still moves it.
+
+- **Looks wet, not chrome:** ferrofluid is nearly pure black. What sells it is reflections: each spike is shaded as a round cone and reflects a small studio setup, giving thin, razor-sharp highlights. **Gloss** sets how strong they are.
+- **Rim & backlight:** a rim light in your colors outlines the silhouette, and a glow behind the spikes flashes on kicks, so black liquid stays visible on a dark wallpaper. *Your colors* takes the rim from your first gradient color and the backlight from your last (the **Ascend** gradient gives a crimson backlight), and *Chrome* uses a cool steel rim and a white backlight.
+- **Shape:** **Sharpness** goes from soft cones to needles, **Spike count** from a few big spikes to a dense forest, **Wobble** from stiff to jelly, and **Reaction** from slow and heavy to snappy.
+- **Height:** like fire, it needs room (220–300 px), and it works hanging down from the top edge and with **Full screen height**.
+- **No GPU?** On a software-rendered desktop, it falls back to bars.
 
 ## Genre presets
 
@@ -209,21 +228,28 @@ Key design decisions:
 iron_will/
   config.py  presets.py  paths.py  accent.py  util.py  qtcommon.py
   dispatcher/   player.py  daemon.py  notify.py  chime.py
-  visualizer/   modes.py  cava.py  physics.py  fire.py  demo.py  renderer.py  layout.py  guardian.py  lockwatch.py  app.py
-                qml/{Visualizer.qml, WaylandWindow.qml, X11Window.qml}  shaders/{fire.frag, fire.frag.qsb, build.sh}
-  settings/     backend.py  app.py  qml/{Main.qml, components/, pages/}
-  assets/iron-will.svg  assets/modes/{bars, mirror, wave, fire}.svg
+  visualizer/   modes.py  dynamics.py  fire.py  ferro.py  cava.py  physics.py  demo.py  renderer.py  layout.py
+                guardian.py  lockwatch.py  app.py
+                qml/{Visualizer.qml, WaylandWindow.qml, X11Window.qml}
+                shaders/{fire.frag, ferro.frag, *.frag.qsb, build.sh}
+  settings/     backend.py  icons.py  app.py  qml/{Main.qml, components/, pages/}
+  assets/iron-will.svg  assets/modes/{bars, mirror, wave, fire, ferro}.svg
 systemd/  desktop/  config/config.example.toml  install.sh  uninstall.sh
 ```
 
 ### Adding a visualizer
 
-Render modes live in one registry, `iron_will/visualizer/modes.py`. Add a `RenderMode` (id, name, tagline, icon) and an SVG icon in `assets/modes/` (64×64 viewBox, plain paths and gradients, no filters), then give it a renderer. The config schema and the settings app's mode tiles pick it up from the registry.
+Render modes live in one registry, `iron_will/visualizer/modes.py`. Add a `RenderMode` (id, name, tagline, icon, and `shader` for a GPU mode) and an SVG icon in `assets/modes/` (64×64 viewBox, plain paths and gradients, no filters). The config schema and the settings app's mode tiles pick it up from the registry.
+
+A GPU mode needs two more pieces, and nothing in the renderer or QML changes:
+
+1. **An analyzer** (Qt-free Python, registered in `GPU_ANALYZERS` in `renderer.py`) that turns spectrum frames into control signals. The hit detectors, springs and band helpers in `dynamics.py` are shared. It provides `apply(cfg, colors)`, `step(raw, dt)`, `reset()` and `settled()`, plus `columns` (16 values), `motion()` and `extra()` (4 values each, per frame), and `look`, `palette` (3 colors) and `param` (style).
+2. **A fragment shader** in `shaders/` (compile it with `build.sh`) that reads those through the generic uniform block: `colsA–D`, `motion`, `extra`, `look` (with the aspect ratio in `w`), `res` (size in pixels), `colorA–C` and `param`. Each shader gives the slots its own meaning; see `fire.frag` and `ferro.frag`. Keep it float-only: the GLSL ES 1.00 / 1.20 variants have no integer `clamp`/`min`/`max`.
 
 ## Troubleshooting
 
 - **No bars?** Check `cava` is installed (System page), then look at `$XDG_RUNTIME_DIR/iron-will/cava.log`.
-- **Fire mode shows bars?** The desktop is rendering in software (no GPU shaders). The visualizer log says *"no GPU shaders"*.
+- **Fire or ferrofluid shows bars?** The desktop is rendering in software (no GPU shaders). The visualizer log says *"no GPU shaders"*.
 - **Visualizer is a normal window on Wayland?** The LayerShellQt QML module is missing. Install `layer-shell-qt`.
 - **Two login sounds?** Turn off Plasma's own login sound in System Settings → Notifications → Plasma Workspace.
 - **No sound after resume?** Raise *Resume delay* in Session Sounds. The daemon also waits up to 10 s for the audio device.

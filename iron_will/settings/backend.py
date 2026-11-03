@@ -26,6 +26,8 @@ from ..dispatcher.player import (STOPPED, Player, list_tracks, now_playing, pick
                                 resolve_chain)
 from ..visualizer import layout, modes
 
+GPU_HEIGHT_KEYS = ("fire.height", "ferro.height")
+
 log = logging.getLogger("iron_will.settings")
 
 SERVICES = (
@@ -102,8 +104,9 @@ class SettingsBackend(QObject):
     @Slot(bool)
     def setFullHeight(self, on: bool) -> None:
         """Toggle the full-screen-height window without changing how big the
-        fire looks: flame height is a share of the window, so rescale it by
-        old/new window height (the flames just gain headroom)."""
+        GPU modes look: their reach (fire.height, ferro.height) is a share of
+        the window, so rescale it by old/new window height (they just gain
+        headroom)."""
         v = self._store.values()
         if v["layout.full_height"] == on:
             return
@@ -113,9 +116,11 @@ class SettingsBackend(QObject):
         fixed = layout.full_height({**v, "layout.full_height": False}, geo)
         full = layout.full_height({**v, "layout.full_height": True}, geo)
         old, new = (fixed, full) if on else (full, fixed)
-        f = config.FIELD_MAP["fire.height"]
-        reach = min(f.max, max(f.min, v["fire.height"] * old / new))
-        self._store.update({"layout.full_height": on, "fire.height": round(reach, 3)})
+        changes = {"layout.full_height": on}
+        for key in GPU_HEIGHT_KEYS:   # every GPU mode's reach is a share of the window
+            f = config.FIELD_MAP[key]
+            changes[key] = round(min(f.max, max(f.min, v[key] * old / new)), 3)
+        self._store.update(changes)
 
     @Slot(str, result="QVariant")
     def field(self, key: str):
@@ -131,7 +136,7 @@ class SettingsBackend(QObject):
 
     # ── render modes (from the registry: one tile per visualizer) ─────────
     renderModes = Property("QVariantList", lambda s: [
-        {"id": m.id, "name": m.name, "tagline": m.tagline,
+        {"id": m.id, "name": m.name, "tagline": m.tagline, "noun": m.noun,
          "icon": "image://modeicon/" + m.id}   # see settings/icons.py
         for m in modes.MODES], constant=True)
 

@@ -1,7 +1,8 @@
 """Fire mode's "ears": spectrum frames → flame controls for the shader (Qt-free).
 
 The GPU shader (``shaders/fire.frag``) does the drawing; this module decides
-*what* the fire does. Two ideas drive it.
+*what* the fire does. Two ideas drive it. (The detectors and springs are
+shared with the other GPU modes: see ``dynamics.py``.)
 
 1 · Hits, not loudness
 ----------------------
@@ -59,18 +60,10 @@ from __future__ import annotations
 import math
 
 from .. import config
+from .dynamics import (COLUMNS, HIGH, LOW, MID, BandSmoother, Spring, Transient, band_mean,
+                       columns_from_bands, ema, rate)
 
-COLUMNS = 16          # flame columns the shader interpolates between
-ANALYSIS_BANDS = config.FIRE_ANALYSIS_BANDS  # cava bands requested in fire mode
-
-# Spectrum slices as fractions of the band list (cava spaces bands
-# logarithmically between the low and high cutoff).
-LOW = (0.0, 0.20)
-MID = (0.20, 0.65)
-HIGH = (0.70, 1.0)
-
-SLOW_TAU = 0.35       # s — "recent average" for transient detection
-REF_RELEASE = 2.5     # s — how long the "biggest recent hit" reference lingers
+ANALYSIS_BANDS = config.GPU_ANALYSIS_BANDS  # cava bands requested in GPU modes
 
 # Combustion model (seconds, at response = 0.5; ``response`` scales them).
 FUEL_BURN = 0.60      # body fuel burns away slowly → flame height
@@ -94,78 +87,17 @@ FRONT_GAP = 0.28      # s — at most one new front this often (no strobing)
 SPARK_RELEASE = 0.45  # s — a shower of embers hangs in the air a moment
 PILOT = 0.08          # flame height share left at silence: a pilot light
 
-
-def _ema(x: float, target: float, dt: float, tau: float) -> float:
-    return x + (target - x) * (1.0 - math.exp(-dt / tau))
-
-
-def _mean(values: list[float], span: tuple[float, float]) -> float:
-    n = len(values)
-    a = int(span[0] * n)
-    b = max(a + 1, int(math.ceil(span[1] * n)))
-    part = values[a:b]
-    return sum(part) / len(part) if part else 0.0
+# Fire palette when fire.palette = "natural": deep red tips → orange → amber body.
+# Saturated all the way down — dark, desaturated oranges read as brown.
+NATURAL_FIRE = ("#FF8C1A", "#FF4A12", "#C8141E")  # body (base), mid, tip
 
 
-class Transient:
-    """Detects hits in one signal: how far it pokes above its own recent
-    average, scaled against the biggest recent poke (0..~1)."""
-
-    def __init__(self, floor: float) -> None:
-        self.floor = floor   # smallest jump that can ever count as a full hit
-        self.reset()
-
-    def reset(self) -> None:
-        self.slow = 0.0
-        self.ref = 0.0
-
-    def step(self, x: float, dt: float) -> float:
-        self.slow = _ema(self.slow, x, dt, SLOW_TAU)
-        jump = max(0.0, x - self.slow)
-        self.ref = max(jump, self.ref * math.exp(-dt / REF_RELEASE))
-        return jump / max(self.ref, self.floor)
-
-
-class Spring:
-    """A damped spring chasing a target: ``x'' = ω²(target − x) − 2ζω·x'``.
-
-    Unlike an exponential follower, it has momentum: it accelerates, can
-    overshoot slightly (ζ < 1) and settles, which is what makes motion read
-    as physical. Falling uses a softer spring (``fall`` × ω), so things rise
-    fast and die down slowly. Semi-implicit Euler, sub-stepped for stability."""
-
-    __slots__ = ("x", "v")
-
-    def __init__(self) -> None:
-        self.x = 0.0
-        self.v = 0.0
-
-    def step(self, target: float, dt: float, omega: float, zeta: float, fall: float) -> float:
-        steps = max(1, math.ceil(dt * omega / 0.5))
-        h = dt / steps
-        for _ in range(steps):
-            w = omega if target > self.x else omega * fall
-            self.v += (w * w * (target - self.x) - 2.0 * zeta * w * self.v) * h
-            self.x += self.v * h
-        if self.x < 0.0:        # flames can't be negative: land softly on zero
-            self.x, self.v = 0.0, max(self.v, 0.0)
-        return self.x
-
-
-def columns_from_bands(values: list[float], count: int = COLUMNS) -> list[float]:
-    """Mirror the spectrum into *count* columns with the bass in the middle —
-    a bonfire shape: kick and bass lift the centre, cymbals lick the edges."""
-    half = count // 2
-    n = len(values)
-    if n == 0:
-        return [0.0] * count
-    side = []
-    for i in range(half):  # average the bands that fall in each half-column
-        a = i * n // half
-        b = max(a + 1, (i + 1) * n // half)
-        part = values[a:b]
-        side.append(sum(part) / len(part))
-    return side[::-1] + side
+def fire_palette(colors: list[str], palette: str) -> tuple[str, str, str]:
+    """(body, mid, tip). Gradient stop 0 sits at the base — same as the bars —
+    so it becomes the flame body and the last stop the tongue tips."""
+    if palette == "natural" or not colors:
+        return NATURAL_FIRE
+    return colors[0], colors[len(colors) // 2] if len(colors) > 2 else colors[-1], colors[-1]
 
 
 class FireAnalyzer:
@@ -181,13 +113,38 @@ class FireAnalyzer:
     ``front_heat``  that front's strength (0 = no front)
     ``sparks``      spark amount (cymbals + ignitions)
     ``phase``       accumulated churn (speed integrated, so it never jumps)
+
+    GPU mode contract (shared with ``FerroAnalyzer``, used by the renderer):
+    :meth:`apply` reads the config; ``look``, ``palette`` and ``param`` hold
+    the style; :meth:`motion` / :meth:`extra` are the per-frame uniforms.
     """
 
     def __init__(self) -> None:
         self.intensity = 1.0
         self.speed = 1.0
         self.response = 0.5
+        self.look = (0.9, 0.6, 1.0)
+        self.palette = NATURAL_FIRE
+        self.param = 0.6
+        self._glow = 0.6
         self.reset()
+
+    def apply(self, cfg: dict, colors: list[str]) -> None:
+        """Read the ``[fire]`` settings and the resolved gradient colors."""
+        self.configure(cfg["fire.intensity"], cfg["fire.speed"], cfg["fire.reaction"])
+        # look: x = max flame height, y = spark amount, z = 1 if flames grow up
+        self.look = (cfg["fire.height"], cfg["fire.sparks"], 1.0 if cfg["layout.direction"] == "up" else 0.0)
+        self.palette = fire_palette(colors, cfg["fire.palette"])
+        self.param = cfg["fire.translucency"]
+        self._glow = cfg["fire.glow"]
+
+    def motion(self) -> tuple[float, float, float, float]:
+        """x = phase, y = heat (brightness flash), z = sparks, w = guitar bed."""
+        return (self.phase, self.heat, self.sparks, self.bed)
+
+    def extra(self) -> tuple[float, float, float, float]:
+        """x = flare (height), y = heat-front height, z = front strength, w = glow setting."""
+        return (self.flare, self.front, self.front_heat, self._glow)
 
     def configure(self, intensity: float, speed: float, response: float = 0.5) -> None:
         self.intensity = intensity
@@ -204,21 +161,20 @@ class FireAnalyzer:
         self._crack = Transient(floor=0.08)
         self._prev_kick = self._prev_crack = 0.0
         self._front_age = FRONT_GAP
-        self._bands: list[float] = []
+        self._bands = BandSmoother(BAND_TAU)
         self._flare = Spring()
         self._cols = [Spring() for _ in range(COLUMNS)]
 
     @property
     def _rate(self) -> float:
-        """Time-constant multiplier from ``response``: 0 → 2× slower, 1 → ~1.7× faster."""
-        return 2.0 ** (1.0 - 2.0 * self.response) if self.response <= 0.5 else 1.0 / (1.0 + 1.4 * (self.response - 0.5))
+        return rate(self.response)
 
     def step(self, raw: list[float], dt: float) -> None:
         """Advance by *dt* seconds with the latest cava frame *raw* (0..1 bands)."""
         if dt <= 0:
             return
         k, r = self.intensity, self._rate
-        low, mid, high = (_mean(raw, s) if raw else 0.0 for s in (LOW, MID, HIGH))
+        low, mid, high = (band_mean(raw, s) if raw else 0.0 for s in (LOW, MID, HIGH))
 
         # ── hits → fuel impulses (only on the rising edge of a hit) ────────
         kick = self._kick.step(low, dt)
@@ -231,11 +187,11 @@ class FireAnalyzer:
         self.flash = self.flash * math.exp(-dt / (FLASH_BURN * r)) + inject * k * max(0.0, 1.0 - self.flash / FUEL_CAP)
 
         # ── combustion: heat flashes first, the flare follows with momentum ─
-        self.bed = _ema(self.bed, min(1.0, mid * 1.1 * k), dt, BED_TAU * r)
+        self.bed = ema(self.bed, min(1.0, mid * 1.1 * k), dt, BED_TAU * r)
         flame = 1.0 - math.exp(-1.3 * self.fuel)            # soft knee: 0 → 1
         heat_target = min(1.0, 0.30 * self.bed + 0.95 * (1.0 - math.exp(-1.8 * self.flash)))
         tau = HEAT_RISE if heat_target > self.heat else HEAT_FALL
-        self.heat = _ema(self.heat, heat_target, dt, tau * r)
+        self.heat = ema(self.heat, heat_target, dt, tau * r)
         self.flare = self._flare.step(flame, dt, FLARE_OMEGA / r, FLARE_ZETA, FLARE_FALL)
 
         # ── a strong ignition sends a heat front up through the flames ─────
@@ -252,18 +208,13 @@ class FireAnalyzer:
         self.sparks = max(min(1.0, crack * 0.8 * k + thrown), self.sparks * math.exp(-dt / SPARK_RELEASE))
 
         # ── speed: the fire churns harder as it gets hotter ─────────────────
-        self.drive = _ema(self.drive, min(1.0, 0.5 * self.bed + 0.6 * self.heat), dt, DRIVE_TAU)
+        self.drive = ema(self.drive, min(1.0, 0.5 * self.bed + 0.6 * self.heat), dt, DRIVE_TAU)
         self.phase += dt * self.speed * (0.5 + 1.3 * self.drive)
         if self.phase > 1000.0:  # keep float precision in the shader
             self.phase -= 1000.0
 
         # ── columns: smoothed spectrum → springs → sideways spread ─────────
-        if len(self._bands) != len(raw):
-            self._bands = list(raw)
-        else:
-            a = 1.0 - math.exp(-dt / BAND_TAU)
-            self._bands = [b + (x - b) * a for b, x in zip(self._bands, raw)]
-        targets = columns_from_bands(self._bands)
+        targets = columns_from_bands(self._bands.step(raw, dt))
         heights = [s.step(min(1.0, t * k), dt, COL_OMEGA / r, COL_ZETA, COL_FALL)
                    for s, t in zip(self._cols, targets)]
         d = min(0.45, SPREAD * dt)   # explicit diffusion, clamped for stability

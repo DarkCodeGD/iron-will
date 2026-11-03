@@ -12,15 +12,25 @@ settled *and* the fade-out finished, the timer stops completely: zero
 repaints and near-zero CPU while nothing is playing. The next loud frame from
 cava restarts it.
 
-Fire mode
----------
-Fire is drawn by a GPU shader (``shaders/fire.frag``, hosted in
-``qml/Visualizer.qml``), not by ``paint()``: per-pixel flames would melt the
-CPU. In fire mode this item still runs the clock, physics and fade, feeds a
-``FireAnalyzer``, and publishes its output as properties the shader binds to
-(``fire*``). It skips ``update()`` entirely, so no CPU texture is rasterised
-or uploaded. On a software-rendered scene graph (no GPU, no shaders) QML
-sets ``fireFallback`` and fire mode simply draws bars.
+GPU modes (fire, ferrofluid, …)
+-------------------------------
+Modes with a ``shader`` in the registry (``modes.py``) are drawn by a GPU
+fragment shader hosted in ``qml/Visualizer.qml``, not by ``paint()``:
+per-pixel effects would melt the CPU. This item still runs the clock and the
+fade, feeds the mode's analyzer (``GPU_ANALYZERS``), and publishes its output
+through one generic set of properties the shader binds to (``gpu*``):
+
+    gpuColsA–D   16 column values (the analyzer's ``columns``)
+    gpuMotion    analyzer.motion()   per frame
+    gpuExtra     analyzer.extra()    per frame
+    gpuLook      analyzer.look       (QML adds the aspect ratio as w)
+    gpuColorA–C  analyzer.palette
+    gpuParam     analyzer.param
+
+Each shader gives those slots its own meaning (documented in the shader and
+the analyzer). In a GPU mode the item skips ``update()`` entirely, so no CPU
+texture is rasterised or uploaded. On a software-rendered scene graph (no GPU,
+no shaders) QML sets ``gpuFallback`` and GPU modes simply draw bars.
 """
 
 from __future__ import annotations
@@ -37,32 +47,26 @@ from PySide6.QtQuick import QQuickPaintedItem
 
 from .. import config, presets
 from .demo import DemoSignal
+from .ferro import FerroAnalyzer
 from .fire import FireAnalyzer
+from .modes import BY_ID
 from .physics import BarPhysics
 
 LOUD_THRESHOLD = 0.02   # a frame above this counts as "audio is playing"
 FADE_TAU = 0.35         # seconds — fade in/out time constant
 QML_URI = "IronWill"
 QML_DIR = Path(__file__).resolve().parent / "qml"
+SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 log = logging.getLogger("iron_will.visualizer")
 
-# Fire palette when fire.palette = "natural": deep red tips → orange → amber body.
-# Saturated all the way down — dark, desaturated oranges read as brown.
-NATURAL_FIRE = ("#FF8C1A", "#FF4A12", "#C8141E")  # body (base), mid, tip
+# GPU mode id → analyzer class (each follows the contract in fire.py / ferro.py).
+GPU_ANALYZERS = {"fire": FireAnalyzer, "ferro": FerroAnalyzer}
 
 
 def _mirror(values: list[float], total: int) -> list[float]:
     """[b0 b1 b2] → [b2 b1 b0 b0 b1 b2] (bass in the middle), trimmed to *total*."""
     left = values[::-1]
     return left + (values[1:] if total % 2 else values)
-
-
-def _fire_palette(colors: list[str], palette: str) -> tuple[QColor, QColor, QColor]:
-    """(body, mid, tip). Gradient stop 0 sits at the base — same as the bars —
-    so it becomes the flame body and the last stop the tongue tips."""
-    if palette == "natural" or not colors:
-        return tuple(QColor(c) for c in NATURAL_FIRE)  # type: ignore[return-value]
-    return QColor(colors[0]), QColor(colors[len(colors) // 2] if len(colors) > 2 else colors[-1]), QColor(colors[-1])
 
 
 def _vec4(values: list[float], start: int) -> QVector4D:
@@ -72,8 +76,8 @@ def _vec4(values: list[float], start: int) -> QVector4D:
 class VisualizerItem(QQuickPaintedItem):
     storeChanged = Signal()
     demoChanged = Signal()
-    fireStyleChanged = Signal()   # config-driven fire values (rare)
-    fireFrame = Signal()          # per-frame fire values (every tick in fire mode)
+    gpuStyleChanged = Signal()    # config-driven shader values (rare)
+    gpuFrame = Signal()           # per-frame shader values (every tick in a GPU mode)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -83,9 +87,9 @@ class VisualizerItem(QQuickPaintedItem):
         self._demo = False
         self._demo_signal = DemoSignal()
         self._physics = BarPhysics()
-        self._fire = FireAnalyzer()
-        self._fire_fallback = False
-        self._fire_colors = _fire_palette([], "natural")
+        self._analyzers: dict = {}    # GPU mode id → analyzer, created on first use
+        self._gpu = None              # the current mode's analyzer (None for CPU modes)
+        self._gpu_fallback = False
         self._cfg = config.defaults()
         self._colors: list[str] = list(self._cfg["visualizer.colors"])
         self._targets: list[float] = []
@@ -128,43 +132,52 @@ class VisualizerItem(QQuickPaintedItem):
 
     demo = Property(bool, _get_demo, _set_demo, notify=demoChanged)
 
-    # ── fire mode → shader uniforms ───────────────────────────────────────
-    def _is_fire(self) -> bool:
-        return self._cfg["visualizer.mode"] == "fire" and not self._fire_fallback
+    # ── GPU modes → shader uniforms ───────────────────────────────────────
+    def _is_gpu(self) -> bool:
+        return self._gpu is not None and not self._gpu_fallback
 
     def _get_fallback(self) -> bool:
-        return self._fire_fallback
+        return self._gpu_fallback
 
     def _set_fallback(self, fallback: bool) -> None:
-        if fallback != self._fire_fallback:
-            self._fire_fallback = fallback
-            if fallback and self._cfg["visualizer.mode"] == "fire":
-                log.warning("no GPU shaders (software rendering) — fire mode draws bars instead")
-            self.fireStyleChanged.emit()
+        if fallback != self._gpu_fallback:
+            self._gpu_fallback = fallback
+            if fallback and self._gpu is not None:
+                log.warning("no GPU shaders (software rendering) — %s mode draws bars instead",
+                            self._cfg["visualizer.mode"])
+            self.gpuStyleChanged.emit()
             self._wake()
             self.update()
 
-    fireFallback = Property(bool, _get_fallback, _set_fallback, notify=fireStyleChanged)
-    fireActive = Property(bool, _is_fire, notify=fireStyleChanged)
-    fireBody = Property(QColor, lambda self: self._fire_colors[0], notify=fireStyleChanged)
-    fireMid = Property(QColor, lambda self: self._fire_colors[1], notify=fireStyleChanged)
-    fireTip = Property(QColor, lambda self: self._fire_colors[2], notify=fireStyleChanged)
-    # look: x = max flame height, y = spark amount, z = 1 if flames grow up (w = aspect, set in QML)
-    fireLook = Property(QVector4D, lambda self: QVector4D(
-        self._cfg["fire.height"], self._cfg["fire.sparks"],
-        1.0 if self._cfg["layout.direction"] == "up" else 0.0, 0.0), notify=fireStyleChanged)
-    fireTranslucency = Property(float, lambda self: self._cfg["fire.translucency"], notify=fireStyleChanged)
-    fireColsA = Property(QVector4D, lambda self: _vec4(self._fire.columns, 0), notify=fireFrame)
-    fireColsB = Property(QVector4D, lambda self: _vec4(self._fire.columns, 4), notify=fireFrame)
-    fireColsC = Property(QVector4D, lambda self: _vec4(self._fire.columns, 8), notify=fireFrame)
-    fireColsD = Property(QVector4D, lambda self: _vec4(self._fire.columns, 12), notify=fireFrame)
-    # motion: x = phase, y = heat (brightness flash), z = sparks, w = guitar bed
-    fireMotion = Property(QVector4D, lambda self: QVector4D(
-        self._fire.phase, self._fire.heat, self._fire.sparks, self._fire.bed), notify=fireFrame)
-    # ignite: x = flare (height), y = heat-front height, z = front strength, w = glow setting
-    fireIgnite = Property(QVector4D, lambda self: QVector4D(
-        self._fire.flare, self._fire.front, self._fire.front_heat, self._cfg["fire.glow"]), notify=fireFrame)
-    fireOpacity = Property(float, lambda self: self._cfg["visualizer.opacity"] * self._fade, notify=fireFrame)
+    def _shader_url(self) -> str:
+        mode = BY_ID.get(self._cfg["visualizer.mode"])
+        return QUrl.fromLocalFile(str(SHADER_DIR / mode.shader)).toString() if mode and mode.shader else ""
+
+    def _style(self, attr: str, default):
+        return getattr(self._gpu, attr) if self._gpu is not None else default
+
+    def _cols(self, start: int) -> QVector4D:
+        return _vec4(self._gpu.columns, start) if self._gpu is not None else QVector4D()
+
+    def _frame(self, method: str) -> QVector4D:
+        return QVector4D(*getattr(self._gpu, method)()) if self._gpu is not None else QVector4D()
+
+    gpuFallback = Property(bool, _get_fallback, _set_fallback, notify=gpuStyleChanged)
+    gpuActive = Property(bool, _is_gpu, notify=gpuStyleChanged)
+    gpuShader = Property(str, _shader_url, notify=gpuStyleChanged)
+    gpuLook = Property(QVector4D, lambda self: QVector4D(*self._style("look", (0.0, 0.0, 1.0)), 0.0),
+                       notify=gpuStyleChanged)
+    gpuColorA = Property(QColor, lambda self: QColor(self._style("palette", ("#000",) * 3)[0]), notify=gpuStyleChanged)
+    gpuColorB = Property(QColor, lambda self: QColor(self._style("palette", ("#000",) * 3)[1]), notify=gpuStyleChanged)
+    gpuColorC = Property(QColor, lambda self: QColor(self._style("palette", ("#000",) * 3)[2]), notify=gpuStyleChanged)
+    gpuParam = Property(float, lambda self: float(self._style("param", 0.0)), notify=gpuStyleChanged)
+    gpuColsA = Property(QVector4D, lambda self: self._cols(0), notify=gpuFrame)
+    gpuColsB = Property(QVector4D, lambda self: self._cols(4), notify=gpuFrame)
+    gpuColsC = Property(QVector4D, lambda self: self._cols(8), notify=gpuFrame)
+    gpuColsD = Property(QVector4D, lambda self: self._cols(12), notify=gpuFrame)
+    gpuMotion = Property(QVector4D, lambda self: self._frame("motion"), notify=gpuFrame)
+    gpuExtra = Property(QVector4D, lambda self: self._frame("extra"), notify=gpuFrame)
+    gpuOpacity = Property(float, lambda self: self._cfg["visualizer.opacity"] * self._fade, notify=gpuFrame)
 
     # ── data input ────────────────────────────────────────────────────────
     @Slot(list)
@@ -183,12 +196,13 @@ class VisualizerItem(QQuickPaintedItem):
         before the sleep is stale, and popping it up only to drop it looks
         like a glitch. Starting at zero with fade 0 gives a soft fade-in."""
         self._physics.reset()
-        self._fire.reset()
+        for analyzer in self._analyzers.values():
+            analyzer.reset()
         self._targets = []
         self._fade = 0.0
         self._last_loud = float("-inf")
         self.update()
-        self.fireFrame.emit()
+        self.gpuFrame.emit()
 
     # ── config ────────────────────────────────────────────────────────────
     def _on_store_changed(self, _keys) -> None:
@@ -202,9 +216,16 @@ class VisualizerItem(QQuickPaintedItem):
         self._physics.configure(c["motion.attack_ms"], c["motion.decay_ms"],
                                 c["motion.peak_hold_ms"], c["motion.peak_gravity"])
         self._physics.resize(config.cava_bar_count(c))
-        self._fire.configure(c["fire.intensity"], c["fire.speed"], c["fire.reaction"])
-        self._fire_colors = _fire_palette(self._colors, c["fire.palette"])
-        self.fireStyleChanged.emit()
+        mode = c["visualizer.mode"]
+        cls = GPU_ANALYZERS.get(mode)
+        if cls is None:
+            self._gpu = None
+        else:
+            if mode not in self._analyzers:
+                self._analyzers[mode] = cls()
+            self._gpu = self._analyzers[mode]
+            self._gpu.apply(c, self._colors)
+        self.gpuStyleChanged.emit()
         self._demo_signal.style = presets.demo_style_for(c)
         self._timer.setInterval(max(1, round(1000 / c["visualizer.fps"])))
         self._brush_key = None
@@ -234,9 +255,9 @@ class VisualizerItem(QQuickPaintedItem):
             self._targets = self._demo_signal.sample(n, dt)
             self._last_loud = now
         self._physics.step(self._targets, dt)
-        fire = self._is_fire()
-        if fire:
-            self._fire.step(self._targets, dt)  # fire has its own (combustion) dynamics
+        gpu = self._is_gpu()
+        if gpu:
+            self._gpu.step(self._targets, dt)  # each GPU mode has its own dynamics
 
         silent_for = now - self._last_loud
         idle = c["motion.idle_fade"] and silent_for > c["motion.idle_timeout"]
@@ -245,10 +266,10 @@ class VisualizerItem(QQuickPaintedItem):
         if abs(goal - self._fade) < 0.003:
             self._fade = goal
 
-        if fire:
-            self.fireFrame.emit()  # the shader redraws; nothing to paint here
-            # Flames keep flickering through silence (a pilot light) until
-            # the idle fade has taken them out completely.
+        if gpu:
+            self.gpuFrame.emit()  # the shader redraws; nothing to paint here
+            # GPU modes keep moving through silence (fire's pilot light, the
+            # liquid's ripples) until the idle fade has taken them out.
             quiet = silent_for > 0.5 and self._fade == 0.0
         else:
             self.update()
@@ -279,7 +300,7 @@ class VisualizerItem(QQuickPaintedItem):
         w, h = self.width(), self.height()
         c = self._cfg
         alpha = c["visualizer.opacity"] * self._fade
-        if w < 2 or h < 2 or alpha <= 0.003 or not self._physics.values or self._is_fire():
+        if w < 2 or h < 2 or alpha <= 0.003 or not self._physics.values or self._is_gpu():
             return
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -373,6 +394,6 @@ class VisualizerItem(QQuickPaintedItem):
 
 def register_qml_types() -> None:
     """``VisualizerItem`` (the CPU painter + clock) and ``Visualizer`` (the
-    component windows and the preview use: that item plus the fire shader)."""
+    component windows and the preview use: that item plus the GPU shader)."""
     qmlRegisterType(VisualizerItem, QML_URI, 1, 0, "VisualizerItem")
     qmlRegisterType(QUrl.fromLocalFile(str(QML_DIR / "Visualizer.qml")), QML_URI, 1, 0, "Visualizer")

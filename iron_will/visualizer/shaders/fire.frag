@@ -31,6 +31,7 @@
 layout(location = 0) in vec2 qt_TexCoord0;
 layout(location = 0) out vec4 fragColor;
 
+// Generic GPU-mode uniforms (see qml/Visualizer.qml); what they mean for fire:
 layout(std140, binding = 0) uniform buf {
     mat4 qt_Matrix;
     float qt_Opacity;
@@ -40,12 +41,18 @@ layout(std140, binding = 0) uniform buf {
     vec4 colsD;        // 12..15
     vec4 motion;       // x = phase, y = heat (brightness flash), z = sparks, w = bed (guitars)
     vec4 look;         // x = flame reach (share of window), y = spark amount, z = up (1) / down (0), w = aspect (w/h)
-    vec4 tipColor;     // coolest visible flame (tongue tips)
-    vec4 midColor;
-    vec4 bodyColor;    // hottest user color, near the base
-    vec4 ignite;       // x = flare (extra height), y = heat-front height, z = front strength, w = glow amount
-    float translucency; // 0 = solid stylized flames … 1 = ghostly, see-through
+    vec4 colorA;       // body: hottest user color, near the base
+    vec4 colorB;       // mid
+    vec4 colorC;       // tip: coolest visible flame (tongue tips)
+    vec4 extra;        // x = flare (extra height), y = heat-front height, z = front strength, w = glow amount
+    float param;       // translucency: 0 = solid stylized flames … 1 = ghostly, see-through
 };
+// Readable names for the generic slots.
+#define bodyColor colorA
+#define midColor colorB
+#define tipColor colorC
+#define ignite extra
+#define translucency param
 
 // ── noise ──────────────────────────────────────────────────────────────────
 float hash12(vec2 p) {

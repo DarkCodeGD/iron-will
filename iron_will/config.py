@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from . import paths
-from .visualizer.modes import MODE_IDS
+from .visualizer.modes import GPU_MODE_IDS, MODE_IDS
 
 log = logging.getLogger("iron_will.config")
 
@@ -112,6 +112,7 @@ SECTIONS: dict[str, str] = {
     "visualizer": "Visualizer · look",
     "motion": "Visualizer · motion & physics",
     "fire": "Visualizer · fire mode",
+    "ferro": "Visualizer · ferrofluid mode",
     "layout": "Visualizer · placement on screen",
     "analysis": "Visualizer · audio analysis (cava)",
     "sounds": "Session sounds",
@@ -148,6 +149,17 @@ FIELDS: tuple[Field, ...] = (
     Field("fire", "translucency", 0.6, "How see-through the flames are: 0 = solid, 1 = ghostly (hot cores stay bright)", 0.0, 1.0),
     Field("fire", "palette", "colors", "Flame colors: your gradient colors, or natural fire",
           choices=("colors", "natural")),
+    # Ferrofluid mode
+    Field("ferro", "height", 0.85, "How tall the spikes reach at full blast (share of the visualizer's height)", 0.1, 1.0),
+    Field("ferro", "intensity", 1.0, "How hard the music pulls on the liquid", 0.3, 2.0),
+    Field("ferro", "sharpness", 0.6, "Spike shape: 0 = soft rounded cones, 1 = needle-sharp", 0.0, 1.0),
+    Field("ferro", "density", 0.5, "How many spikes stand along the width: 0 = a few big ones, 1 = a dense forest", 0.0, 1.0),
+    Field("ferro", "wobble", 0.6, "Liquid jiggle after each hit: 0 = stiff, 1 = very wobbly", 0.0, 1.0),
+    Field("ferro", "reaction", 0.5, "How fast the spikes rise and fall: 0 = slow and heavy, 1 = snappy", 0.0, 1.0),
+    Field("ferro", "rim", 0.7, "Colored rim light and backlight; keeps the black liquid visible on dark wallpapers", 0.0, 1.0),
+    Field("ferro", "gloss", 0.8, "Strength of the studio-light reflections on the liquid", 0.0, 1.0),
+    Field("ferro", "palette", "colors", "Rim light colors: your gradient colors, or neutral chrome",
+          choices=("colors", "chrome")),
     # Motion
     Field("motion", "attack_ms", 35, "Rise time constant in ms (lower = punchier)", 0, 500),
     Field("motion", "decay_ms", 220, "Fall time constant in ms (higher = smoother)", 10, 2000),
@@ -326,15 +338,15 @@ def ensure_exists(path: Path | None = None) -> Path:
 
 # ─── Derived values shared by several components ───────────────────────────
 
-FIRE_ANALYSIS_BANDS = 32  # cava bands in fire mode (the shader folds them into 16 columns)
+GPU_ANALYSIS_BANDS = 32  # cava bands in GPU modes (the analyzers fold them into 16 columns)
 
 
 def cava_bar_count(values: dict[str, Any]) -> int:
     """How many bands cava must compute. Mirror mode shows every band twice
     (low frequencies in the middle), so it only needs half."""
     mode = values["visualizer.mode"]
-    if mode == "fire":
-        return FIRE_ANALYSIS_BANDS  # the shader reads 16 columns; bar_count doesn't apply
+    if mode in GPU_MODE_IDS:
+        return GPU_ANALYSIS_BANDS  # shaders read 16 columns; bar_count doesn't apply
     n = values["visualizer.bar_count"]
     return math.ceil(n / 2) if mode == "mirror" else n
 

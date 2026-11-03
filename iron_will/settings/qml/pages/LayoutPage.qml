@@ -105,7 +105,12 @@ PageScaffold {
         SegmentedRow { key: "layout.anchor"; label: "Screen edge" }
         SegmentedRow {
             key: "layout.direction"; label: "Grow direction"
-            description: page.v("visualizer.mode") === "fire" ? "Which way the flames rise" : "Which way the bars grow"
+            description: {
+                var all = backend.renderModes, mode = page.v("visualizer.mode")
+                for (var i = 0; i < all.length; i++)
+                    if (all[i].id === mode) return "Which way the " + all[i].noun + " grow"
+                return "Which way the visualizer grows"
+            }
         }
         SegmentedRow { key: "layout.align"; label: "Alignment" }
         Divider {}
@@ -117,7 +122,7 @@ PageScaffold {
         }
         ToggleRow {
             key: "layout.full_height"; label: "Full screen height"
-            description: "Reach all the way to the far edge of the screen. Fire gets room for tall flames, glow and embers (its size stays the same), and it stays click-through."
+            description: "Reach all the way to the far edge of the screen. Fire and ferrofluid get room for tall flames, spikes, glow and embers (their size stays the same), and it stays click-through."
             setter: function (on) { backend.setFullHeight(on) }
         }
         SliderRow {

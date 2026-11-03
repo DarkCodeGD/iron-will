@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Iron Will · render mode "Ferrofluid": glossy black spikes pulled out of
+       a pool of magnetic liquid. The spikes flare wide at the base and melt
+       into the pool; the orange-to-crimson backlight gives the silhouette,
+       thin studio highlights run down their flanks. -->
+  <defs>
+    <radialGradient id="back" gradientUnits="userSpaceOnUse" cx="32" cy="42" r="30">
+      <stop offset="0" stop-color="#FF8A1F"/>
+      <stop offset="0.5" stop-color="#F0402A" stop-opacity="0.8"/>
+      <stop offset="1" stop-color="#E8262E" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="0" y1="5" x2="0" y2="60">
+      <stop offset="0" stop-color="#1C2028"/>
+      <stop offset="1" stop-color="#050608"/>
+    </linearGradient>
+  </defs>
+  <!-- backlight -->
+  <rect x="0" y="0" width="64" height="64" fill="url(#back)"/>
+  <!-- the liquid: spikes + pool -->
+  <g fill="url(#ink)">
+    <path d="M19.00 52 C28.10 50.50 30.70 30.30 32.00 5 C33.30 30.30 35.90 50.50 45.00 52 Z"/>
+    <path d="M8.50 52 C15.50 50.50 17.50 37.95 18.50 22 C19.50 37.95 21.50 50.50 28.50 52 Z"/>
+    <path d="M35.50 52 C42.50 50.50 44.50 37.95 45.50 22 C46.50 37.95 48.50 50.50 55.50 52 Z"/>
+    <path d="M0.50 52 C5.40 50.50 6.80 44.25 7.50 36 C8.20 44.25 9.60 50.50 14.50 52 Z"/>
+    <path d="M49.50 52 C54.40 50.50 55.80 44.25 56.50 36 C57.20 44.25 58.60 50.50 63.50 52 Z"/>
+    <path d="M1 53 Q32 47.5 63 53 L63 58 Q32 62.5 1 58 Z"/>
+  </g>
+  <!-- studio highlights -->
+  <g fill="none" stroke="#FFF4E6" stroke-linecap="round" opacity="0.9">
+    <path stroke-width="1.2" d="M31.35 23.40 C30.70 33.52 29.66 40.88 28.10 46.40"/>
+    <path stroke-width="1.0" d="M18.00 33.60 C17.50 39.98 16.70 44.62 15.50 48.10"/>
+    <path stroke-width="1.0" d="M45.00 33.60 C44.50 39.98 43.70 44.62 42.50 48.10"/>
+    <path d="M12 53.4 Q32 50 52 53.4" stroke-width="1.1" opacity="0.65"/>
+  </g>
+</svg>

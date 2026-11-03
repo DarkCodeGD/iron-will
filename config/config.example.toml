@@ -4,7 +4,7 @@
 
 # ── Visualizer · look ───────────────────────────────────────────
 [visualizer]
-# Render style — bars | mirror | wave | fire
+# Render style — bars | mirror | wave | fire | ferro
 mode = "bars"
 # Number of bars / wave points — 8 … 256
 bar_count = 64
@@ -59,6 +59,27 @@ reaction = 0.5
 # How see-through the flames are: 0 = solid, 1 = ghostly (hot cores stay bright) — 0 … 1
 translucency = 0.6
 # Flame colors: your gradient colors, or natural fire — colors | natural
+palette = "colors"
+
+# ── Visualizer · ferrofluid mode ────────────────────────────────
+[ferro]
+# How tall the spikes reach at full blast (share of the visualizer's height) — 0.1 … 1
+height = 0.85
+# How hard the music pulls on the liquid — 0.3 … 2
+intensity = 1.0
+# Spike shape: 0 = soft rounded cones, 1 = needle-sharp — 0 … 1
+sharpness = 0.6
+# How many spikes stand along the width: 0 = a few big ones, 1 = a dense forest — 0 … 1
+density = 0.5
+# Liquid jiggle after each hit: 0 = stiff, 1 = very wobbly — 0 … 1
+wobble = 0.6
+# How fast the spikes rise and fall: 0 = slow and heavy, 1 = snappy — 0 … 1
+reaction = 0.5
+# Colored rim light and backlight; keeps the black liquid visible on dark wallpapers — 0 … 1
+rim = 0.7
+# Strength of the studio-light reflections on the liquid — 0 … 1
+gloss = 0.8
+# Rim light colors: your gradient colors, or neutral chrome — colors | chrome
 palette = "colors"
 
 # ── Visualizer · placement on screen ────────────────────────────

@@ -16,3 +16,4 @@ Divider 1.0 Divider.qml
 Toast 1.0 Toast.qml
 GenrePresets 1.0 GenrePresets.qml
 ModePicker 1.0 ModePicker.qml
+HeightHint 1.0 HeightHint.qml

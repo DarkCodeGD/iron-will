@@ -6,16 +6,18 @@ PageScaffold {
     id: page
     title: "Appearance"
     subtitle: "Style and colors of the desktop visualizer. Changes apply live to your desktop."
-    resetSections: ["visualizer", "fire"]
+    resetSections: ["visualizer", "fire", "ferro"]
 
     readonly property int rev: backend.revision
     readonly property string mode: { rev; return backend.get("visualizer.mode") }
     readonly property bool accentMode: { rev; return backend.get("visualizer.color_source") === "accent" }
     readonly property bool fire: mode === "fire"
+    readonly property bool ferro: mode === "ferro"
+    readonly property bool gpu: fire || ferro      // drawn by a shader: bar-shape controls don't apply
     readonly property bool bars: mode === "bars" || mode === "mirror"
-    readonly property int windowHeight: { rev; return backend.get("layout.height") }
     readonly property bool fullHeight: { rev; return backend.get("layout.full_height") }
     readonly property bool naturalFire: { rev; return backend.get("fire.palette") === "natural" }
+    readonly property bool chromeFerro: { rev; return backend.get("ferro.palette") === "chrome" }
 
     PreviewCard {}
 
@@ -28,7 +30,7 @@ PageScaffold {
         Divider {}
         SliderRow {
             key: "visualizer.bar_count"; label: page.mode === "wave" ? "Wave points" : "Bar count"; stepSize: 1
-            visible: !page.fire
+            visible: !page.gpu
         }
         SliderRow {
             key: "visualizer.spacing"; label: "Spacing"; unit: " px"
@@ -42,7 +44,7 @@ PageScaffold {
         }
         SliderRow {
             key: "visualizer.min_height"; label: "Resting height"; unit: " px"; description: "Height of a bar at silence while audio plays"
-            visible: !page.fire
+            visible: !page.gpu
         }
         SliderRow {
             key: "visualizer.opacity"; label: "Opacity"; decimals: 2
@@ -61,34 +63,7 @@ PageScaffold {
         iconName: "flame"
         visible: page.fire
 
-        // Fire needs height to breathe; the default strip is made for bars.
-        Rectangle {
-            visible: page.windowHeight < 200 && !page.fullHeight
-            Layout.fillWidth: true
-            implicitHeight: hintRow.implicitHeight + 24
-            radius: Theme.radiusInner
-            color: Theme.tint(Theme.primary, 0.10)
-            border.color: Theme.tint(Theme.primary, 0.35)
-            RowLayout {
-                id: hintRow
-                anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 14 }
-                spacing: 12
-                Icon { name: "flame"; size: 18; color: Theme.primary }
-                Text {
-                    Layout.fillWidth: true
-                    text: "Your visualizer is " + page.windowHeight + " px tall. Fire really comes alive at 220–300 px."
-                    color: Theme.text; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap
-                }
-                PillButton {
-                    kind: "ghost"; text: "Make it 260 px"
-                    onClicked: backend.set("layout.height", 260)
-                }
-                PillButton {
-                    kind: "ghost"; text: "Full screen"
-                    onClicked: backend.setFullHeight(true)
-                }
-            }
-        }
+        HeightHint { what: "Fire"; icon: "flame" }
 
         SegmentedRow {
             key: "fire.palette"; label: "Flame colors"
@@ -136,9 +111,69 @@ PageScaffold {
     }
 
     Card {
+        title: "Ferrofluid"
+        subtitle: "How the magnetic liquid moves and catches the light"
+        iconName: "magnet"
+        visible: page.ferro
+
+        HeightHint { what: "Ferrofluid"; icon: "magnet" }
+
+        SegmentedRow {
+            key: "ferro.palette"; label: "Rim light"
+            description: page.chromeFerro ? "Cool steel rim and a white backlight, like a studio photo"
+                                          : "Your gradient: rim from the first color, backlight from the last"
+            labels: ({ colors: "Your colors", chrome: "Chrome" })
+        }
+        Divider {}
+        SliderRow {
+            key: "ferro.height"; label: "Spike height"; decimals: 2
+            description: page.fullHeight ? "How much of the screen the spikes reach at full blast"
+                                         : "How much of the visualizer the spikes reach at full blast"
+            format: function (v) { return Math.round(v * 100) + "%" }
+        }
+        SliderRow {
+            key: "ferro.intensity"; label: "Intensity"; decimals: 2
+            description: "How hard each hit pulls on the liquid: bigger, sharper spikes"
+            format: function (v) { return Math.round(v * 100) + "%" }
+        }
+        SliderRow {
+            key: "ferro.wobble"; label: "Wobble"; decimals: 2
+            description: "How much the liquid jiggles after each hit before it settles"
+            format: function (v) { return v < 0.25 ? "Stiff" : v < 0.75 ? "Liquid" : "Jelly" }
+        }
+        SliderRow {
+            key: "ferro.reaction"; label: "Reaction"; decimals: 2
+            description: "How fast the spikes rise and slump back: low = slow and heavy, high = snappy"
+            format: function (v) { return v < 0.25 ? "Heavy" : v < 0.75 ? "Natural" : "Snappy" }
+        }
+        SliderRow {
+            key: "ferro.sharpness"; label: "Sharpness"; decimals: 2
+            description: "Spike shape, from soft rounded cones to needles"
+            format: function (v) { return v < 0.3 ? "Soft" : v < 0.7 ? "Sharp" : "Needles" }
+        }
+        SliderRow {
+            key: "ferro.density"; label: "Spike count"; decimals: 2
+            description: "A few big spikes, or a dense forest of small ones"
+            format: function (v) { return v < 0.3 ? "Few" : v < 0.7 ? "Balanced" : "Dense" }
+        }
+        SliderRow {
+            key: "ferro.gloss"; label: "Gloss"; decimals: 2
+            description: "The studio-light reflections that make the liquid look wet"
+            format: function (v) { return v < 0.005 ? "Off" : Math.round(v * 100) + "%" }
+        }
+        SliderRow {
+            key: "ferro.rim"; label: "Rim & backlight"; decimals: 2
+            description: "Colored edge light and the glow behind the spikes, which flashes on kicks. Keeps black liquid visible on dark wallpapers."
+            format: function (v) { return v < 0.005 ? "Off" : Math.round(v * 100) + "%" }
+        }
+    }
+
+    Card {
         title: "Color"
         subtitle: page.fire && page.naturalFire ? "Natural fire uses its own colors. Pick \u201cYour colors\u201d in the Fire card to use these."
-                                                : "Follow your Plasma accent, or build your own gradient"
+                : page.ferro && page.chromeFerro ? "Chrome uses its own colors. Pick \u201cYour colors\u201d in the Ferrofluid card to use these."
+                : page.ferro ? "Ferrofluid lights the black liquid with these: rim from the first color, backlight from the last"
+                : "Follow your Plasma accent, or build your own gradient"
         iconName: "palette"
 
         SegmentedRow {
@@ -171,6 +206,6 @@ PageScaffold {
 
         ColorStops { visible: !page.accentMode || !backend.accentColor }
 
-        SegmentedRow { key: "visualizer.gradient_direction"; label: "Gradient direction"; visible: !page.fire }
+        SegmentedRow { key: "visualizer.gradient_direction"; label: "Gradient direction"; visible: !page.gpu }
     }
 }
