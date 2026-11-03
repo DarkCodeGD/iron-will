@@ -16,14 +16,15 @@ import logging
 import shutil
 from pathlib import Path
 
-from PySide6.QtCore import (Property, QFileSystemWatcher, QLibraryInfo, QObject, QProcess, QTimer, QUrl,
-                            Signal, Slot)
+from PySide6.QtCore import (Property, QFileSystemWatcher, QLibraryInfo, QObject, QProcess, QRect, QTimer,
+                            QUrl, Signal, Slot)
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtQml import QJSValue
 
 from .. import __version__, config, paths, presets
 from ..dispatcher.player import (STOPPED, Player, list_tracks, now_playing, pick_track, request_stop,
                                 resolve_chain)
+from ..visualizer import layout
 
 log = logging.getLogger("iron_will.settings")
 
@@ -97,6 +98,24 @@ class SettingsBackend(QObject):
         if isinstance(value, QJSValue):
             value = value.toVariant()
         self._store.set(key, value)
+
+    @Slot(bool)
+    def setFullHeight(self, on: bool) -> None:
+        """Toggle the full-screen-height window without changing how big the
+        fire looks: flame height is a share of the window, so rescale it by
+        old/new window height (the flames just gain headroom)."""
+        v = self._store.values()
+        if v["layout.full_height"] == on:
+            return
+        screen = QGuiApplication.primaryScreen()
+        geo = (screen.availableGeometry() if v["layout.respect_panels"] else screen.geometry()) \
+            if screen else QRect(0, 0, 1920, 1080)
+        fixed = layout.full_height({**v, "layout.full_height": False}, geo)
+        full = layout.full_height({**v, "layout.full_height": True}, geo)
+        old, new = (fixed, full) if on else (full, fixed)
+        f = config.FIELD_MAP["fire.height"]
+        reach = min(f.max, max(f.min, v["fire.height"] * old / new))
+        self._store.update({"layout.full_height": on, "fire.height": round(reach, 3)})
 
     @Slot(str, result="QVariant")
     def field(self, key: str):

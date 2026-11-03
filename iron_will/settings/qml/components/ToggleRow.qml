@@ -8,6 +8,8 @@ RowLayout {
     property string label
     property string description
     property color accent: Theme.primary
+    // Optional custom write (e.g. a backend slot that also adjusts related keys).
+    property var setter: null
     readonly property bool checked: sw.checked
 
     Layout.fillWidth: true
@@ -33,6 +35,6 @@ RowLayout {
     PillSwitch {
         id: sw
         accent: row.accent
-        onToggled: backend.set(row.key, checked)
+        onToggled: row.setter ? row.setter(checked) : backend.set(row.key, checked)
     }
 }

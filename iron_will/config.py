@@ -133,7 +133,7 @@ FIELDS: tuple[Field, ...] = (
     Field("visualizer", "peaks", True, "Draw falling peak caps above bars"),
     Field("visualizer", "fps", 60, "Frames per second (also cava's analysis rate)", 24, 165),
     # Fire mode
-    Field("fire", "height", 0.9, "How tall the flames reach at full blast (share of the visualizer's height)", 0.2, 1.0),
+    Field("fire", "height", 0.9, "How tall the flames reach at full blast (share of the visualizer's height)", 0.1, 1.0),
     Field("fire", "intensity", 1.0, "How hard the music drives the fire", 0.3, 2.0),
     Field("fire", "sparks", 0.6, "Spark amount: embers thrown up by snare and cymbal hits (0 = none)", 0.0, 1.0),
     Field("fire", "speed", 1.0, "Flame speed: how fast the flames churn (the music speeds them up further)", 0.3, 2.5),
@@ -154,6 +154,9 @@ FIELDS: tuple[Field, ...] = (
     Field("layout", "align", "center", "Horizontal alignment", choices=("left", "center", "right", "stretch")),
     Field("layout", "width", 960, "Width in logical pixels (ignored when align = stretch)", 50, 7680),
     Field("layout", "height", 90, "Height in logical pixels", 16, 2160),
+    Field("layout", "full_height", False,
+          "Span the whole screen height (minus panels and margin_y), ignoring height. Gives fire mode headroom "
+          "so tall flames, glow and embers never hit the window's edge"),
     Field("layout", "margin_x", 0, "Horizontal offset: from the aligned edge, or shift when centered", -4000, 4000),
     Field("layout", "margin_y", 0, "Distance from the anchored edge (or from the panel, see respect_panels)", 0, 4000),
     Field("layout", "layer", "bottom", "Stacking layer: bottom = above wallpaper, below windows",

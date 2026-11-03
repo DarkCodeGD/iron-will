@@ -44,7 +44,8 @@ PageScaffold {
                 readonly property int dReserved: page.v("layout.respect_panels") && !dTop ? dPanelH : 0
                 readonly property int dVw: dAlign === "stretch" ? backend.screenWidth - 2 * dMx
                                                                 : Math.min(page.v("layout.width"), backend.screenWidth)
-                readonly property int dVh: Math.min(page.v("layout.height"), backend.screenHeight)
+                readonly property int dVh: page.v("layout.full_height") ? backend.screenHeight - dReserved - dMy
+                                                                    : Math.min(page.v("layout.height"), backend.screenHeight)
                 readonly property int dVx: dAlign === "left" ? dMx
                                          : dAlign === "right" ? backend.screenWidth - dVw - dMx
                                          : dAlign === "center" ? (backend.screenWidth - dVw) / 2 + dMx : dMx
@@ -110,7 +111,16 @@ PageScaffold {
             enabled: page.v("layout.align") !== "stretch"
             description: enabled ? "" : "Stretch fills the screen width"
         }
-        SliderRow { key: "layout.height"; label: "Height"; unit: " px"; from: 16; to: Math.round(backend.screenHeight / 2) }
+        ToggleRow {
+            key: "layout.full_height"; label: "Full screen height"
+            description: "Reach all the way to the far edge of the screen. Fire gets room for tall flames, glow and embers (its size stays the same), and it stays click-through."
+            setter: function (on) { backend.setFullHeight(on) }
+        }
+        SliderRow {
+            key: "layout.height"; label: "Height"; unit: " px"; from: 16; to: Math.round(backend.screenHeight / 2)
+            enabled: !page.v("layout.full_height")
+            description: enabled ? "" : "Full screen height is on"
+        }
         SliderRow {
             key: "layout.margin_x"; label: "Horizontal offset"; unit: " px"
             from: page.v("layout.align") === "center" ? -Math.round(backend.screenWidth / 2) : 0

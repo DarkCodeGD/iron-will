@@ -15,6 +15,7 @@ Rectangle {
     property int rev: backend.revision
     readonly property bool topAnchor: { rev; return backend.get("layout.anchor") === "top" }
     readonly property int configuredHeight: { rev; return backend.get("layout.height") }
+    readonly property bool fullHeight: { rev; return backend.get("layout.full_height") }
 
     RowLayout {
         id: header
@@ -58,7 +59,7 @@ Rectangle {
             demo: true
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width - 32
-            height: Math.min(parent.height - 24, Math.max(24, card.configuredHeight))
+            height: card.fullHeight ? parent.height - 24 : Math.min(parent.height - 24, Math.max(24, card.configuredHeight))
             y: card.topAnchor ? 12 : parent.height - height - 12
         }
     }

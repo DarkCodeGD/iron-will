@@ -56,6 +56,7 @@ Stylized flames drawn by a GPU shader, built for rock and metal. The music never
 | **Kick drum, bass** | ignitions: heat flashes and flare-ups. Non-stop double bass builds a big, roaring fire that still breathes instead of jittering |
 | **Rhythm guitars, vocals** | the flame *bed*: the steady body of the fire |
 | **Snare, cymbals** | a little fuel, and *sparks*: a crash throws a shower of embers |
+| **Every ignition** | a burst of embers that rise well above the flames, cooling from gold to the tip color |
 | **Overall heat** | *speed*: calm parts lick lazily, a hot fire churns hard |
 
 Metal is mastered loud, so the level barely moves and a fire that followed plain loudness would sit at full height. Instead, each detector tracks how far its part of the spectrum jumps above its own recent average, scaled against the biggest recent hit. A kick still lands on top of a wall of guitars.
@@ -65,7 +66,8 @@ Fire has its own dynamics: the Motion page's attack and decay shape the bars, no
 - **Glow:** the fire throws light onto the wallpaper around it, brightest in the gaps between tongues and fading to wine-red higher up, flickering like firelight on a wall. The hottest spots bloom toward white. The **Glow** slider sets how much.
 - **Blending:** fire is light, not paint. The flames *add* their glow to your wallpaper and only partly hide it: wispy tips are see-through, the hot core is nearly solid. The **Translucency** slider goes from solid stylized flames to ghostly; lower it on bright wallpapers, where translucent flames wash out like fire in daylight.
 - **Colors:** *Your colors* uses your gradient (first stop at the base, last at the tips, so the **Ascend** preset gives orange→crimson fire and a cool gradient gives blue fire). *Natural fire* ignores your colors.
-- **Height:** fire needs room. It comes alive at 220–300 px, and the Fire card offers a one-click resize when your visualizer is shorter.
+- **Embers:** two layers (big, fast ones up front and small, slow ones behind, for depth) that sway in the updraft and twinkle. Each one is a solid orange-gold speck with a white-hot center, so it reads on dark and bright wallpapers alike and over the fire's own glow. A burning fire always sheds some; hits throw showers. They need open sky: if your flames fill the window, turn on Full screen height. The **Sparks** slider sets how many.
+- **Height:** fire needs room. It comes alive at 220–300 px, and the Fire card offers a one-click resize when your visualizer is shorter. Tongues that reach the top of the window fade out instead of being cut off. For real headroom, turn on **Full screen height** (Layout page, or `full_height` in `[layout]`): the window spans the whole screen and the fire keeps its size (Flame height is rescaled for you), so tall licks, glow and embers have open sky. The window stays click-through, and the sky above the fire is cheap: the shader skips its turbulence there.
 - **Cost:** about 8% of one CPU core in testing (bars: ~46% at the same size), because the GPU draws every pixel. Like the other modes, it stops completely after the idle fade.
 - **No GPU?** On a software-rendered desktop, fire mode falls back to bars.
 
@@ -171,7 +173,7 @@ Set `IRON_WILL_DEBUG=1` for verbose logs.
 
 Everything is stored in one commented file, `~/.config/iron-will/config.toml` (see [`config/config.example.toml`](config/config.example.toml)). You can edit it by hand or in the GUI. Both components pick up changes live. Invalid values fall back to their defaults and never crash anything.
 
-Main groups: `[visualizer]` (mode, bars, spacing, roundness, colors, opacity, fps), `[motion]` (attack/decay, peak physics, idle fade), `[layout]` (edge, alignment, size, offsets, layer), `[analysis]` (cava sensitivity, frequency range) and `[sounds]` (folder, events, delays, cooldown, volume, player).
+Main groups: `[visualizer]` (mode, bars, spacing, roundness, colors, opacity, fps), `[motion]` (attack/decay, peak physics, idle fade), `[layout]` (edge, alignment, size or full screen height, offsets, layer), `[analysis]` (cava sensitivity, frequency range) and `[sounds]` (folder, events, delays, cooldown, volume, player).
 
 ## Architecture
 

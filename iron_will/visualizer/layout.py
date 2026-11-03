@@ -19,6 +19,14 @@ ANCHOR_TOP, ANCHOR_BOTTOM, ANCHOR_LEFT, ANCHOR_RIGHT = 1, 2, 4, 8
 LAYERS = {"background": 0, "bottom": 1, "top": 2}
 
 
+def full_height(v: dict, screen: QRect) -> int:
+    """Window height: the configured height, or everything from the anchored
+    edge to the far edge when ``full_height`` is on."""
+    if v["layout.full_height"]:
+        return max(1, screen.height() - v["layout.margin_y"])
+    return min(v["layout.height"], screen.height())
+
+
 class LayoutModel(QObject):
     changed = Signal()
 
@@ -50,7 +58,7 @@ class LayoutModel(QObject):
                          else self._screen.geometry()) if self._screen else QRect(0, 0, 1920, 1080)
         align, top = v["layout.align"], v["layout.anchor"] == "top"
         mx, my = v["layout.margin_x"], v["layout.margin_y"]
-        height = min(v["layout.height"], screen.height())
+        height = full_height(v, screen)
         width = max(1, screen.width() - 2 * mx) if align == "stretch" else min(v["layout.width"], screen.width())
 
         # Horizontal placement → x relative to the screen's left edge.

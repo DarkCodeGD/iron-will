@@ -46,7 +46,7 @@ idle_timeout = 4.0
 
 # ── Visualizer · fire mode ──────────────────────────────────────
 [fire]
-# How tall the flames reach at full blast (share of the visualizer's height) — 0.2 … 1
+# How tall the flames reach at full blast (share of the visualizer's height) — 0.1 … 1
 height = 0.9
 # How hard the music drives the fire — 0.3 … 2
 intensity = 1.0
@@ -73,6 +73,8 @@ align = "center"
 width = 960
 # Height in logical pixels — 16 … 2160
 height = 90
+# Span the whole screen height (minus panels and margin_y), ignoring height. Gives fire mode headroom so tall flames, glow and embers never hit the window's edge
+full_height = false
 # Horizontal offset: from the aligned edge, or shift when centered — -4000 … 4000
 margin_x = 0
 # Distance from the anchored edge (or from the panel, see respect_panels) — 0 … 4000

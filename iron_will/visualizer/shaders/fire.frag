@@ -13,9 +13,16 @@
 //  4. Temperature: fuel → tip color → body color → hot → white-hot core.
 //     Each ignition's heat flash pushes the whole ramp hotter.
 //  5. Glow: an aura of light thrown onto the wallpaper, plus core bloom.
-//  6. Sparks: a grid of cells drifting upward; a few cells (more on cymbal
-//     hits and flare-ups) hold a tiny glowing ember that cools as it rises.
+//  6. Embers: two layers of drifting grid cells (near = big and fast,
+//     far = small and slow, for depth). Cymbal hits and ignitions light up
+//     more cells; each ember is a streak that sways, twinkles and cools from
+//     white-gold to the tip color as it climbs well above the flames.
 //  7. Blending like real fire: emission + absorption (see the end).
+//
+// Fire space: everything is measured in units of the flame's reach, not the
+// window, so a tall (even full-screen) window gives the fire headroom instead
+// of zooming it. `look.x` is the reach as a share of the window; at the
+// default 0.9 fire space equals window space.
 //
 // Motion comes from a combustion model on the CPU (fire.py): hits add fuel,
 // heat flashes first, the flare (height) follows on a spring, and a heat
@@ -32,7 +39,7 @@ layout(std140, binding = 0) uniform buf {
     vec4 colsC;        // 8..11
     vec4 colsD;        // 12..15
     vec4 motion;       // x = phase, y = heat (brightness flash), z = sparks, w = bed (guitars)
-    vec4 look;         // x = max height share, y = spark amount, z = up (1) / down (0), w = aspect (w/h)
+    vec4 look;         // x = flame reach (share of window), y = spark amount, z = up (1) / down (0), w = aspect (w/h)
     vec4 tipColor;     // coolest visible flame (tongue tips)
     vec4 midColor;
     vec4 bodyColor;    // hottest user color, near the base
@@ -112,37 +119,78 @@ vec3 ramp(float t, float heat) {
     return c;
 }
 
+// ── embers ─────────────────────────────────────────────────────────────────
+// One layer of rising embers. The plane is cut into cells scrolling upward;
+// each grid column rises at its own speed, and a cell holds an ember when its
+// random roll is under `density`. Embers fade in over a small band of rolls
+// instead of popping when the density changes.
+// Returns (core, bloom, center): the solid speck, its soft glow and its
+// white-hot center, kept apart so the core can also cover the wallpaper
+// (see the composite).
+// The ember sits in the middle 40 % of its cell and its bloom stops short of
+// the cell's edge, so no ember is ever clipped into a square.
+//   p      fire-space position      scale  cells per fire unit
+//   rise   upward speed             size   ember core radius (cell units)
+vec3 emberLayer(vec2 p, float phase, float density, float scale, float rise, float size, float seed) {
+    vec2 g = p * vec2(scale, scale * 0.6);
+    float colId = floor(g.x);
+    g.y -= phase * rise * scale * (0.65 + 0.7 * hash12(vec2(colId, seed)));
+    vec2 cell = floor(g);
+    vec2 rnd = hash22(cell + seed);
+    float on = clamp((density - rnd.x) / 0.04, 0.0, 1.0);
+    if (on <= 0.0) return vec3(0.0);
+    vec2 pos = vec2(0.32, 0.35) + vec2(0.36, 0.30) * hash22(cell + seed + 7.7);
+    pos.x += 0.08 * sin(phase * 4.0 + rnd.y * 40.0);         // sway in the updraft
+    vec2 d = fract(g) - pos;
+    d.y *= 0.75;                                               // a little stretched: a motion streak
+    float r = length(d);
+    float twinkle = (0.75 + 0.25 * sin(phase * 23.0 + rnd.y * 70.0)) * on;
+    return vec3(smoothstep(size, size * 0.35, r), smoothstep(size * 1.9, 0.0, r),
+                smoothstep(size * 0.55, 0.0, r)) * twinkle;
+}
+
 void main() {
     float phase = motion.x, heat = motion.y, burst = motion.z, bed = motion.w;
     float flare = ignite.x, front = ignite.y, frontHeat = ignite.z, glowAmt = ignite.w;
     float aspect = max(look.w, 0.01);
 
     vec2 uv = qt_TexCoord0;
-    float v = look.z > 0.5 ? 1.0 - uv.y : uv.y;     // 0 at the base, 1 at the far edge
-    float x = uv.x * aspect;                         // square noise cells whatever the size
+    float vw = look.z > 0.5 ? 1.0 - uv.y : uv.y;    // window space: 0 at the base, 1 at the far edge
+    float fs = 0.9 / max(look.x, 0.05);              // window → fire space
+    float v = vw * fs;
+    float x = uv.x * aspect * fs;                    // square noise cells whatever the size
 
     // 1 · height: pilot flame + guitar bed + this column's music + the ignition flare.
     float music = profile(uv.x);
-    float h = look.x * clamp(0.07 + 0.45 * bed * (0.5 + 0.5 * music) + 0.33 * music + 0.40 * flare, 0.0, 1.0);
+    float h = 0.9 * clamp(0.07 + 0.45 * bed * (0.5 + 0.5 * music) + 0.33 * music + 0.40 * flare, 0.0, 1.0);
     h = max(h, 0.02);
+    float rel = v / h;                               // 0 base → 1 nominal flame top
 
-    // 2 · rising, self-warping turbulence.
+    // 2 · rising, self-warping turbulence. Skipped far above the flames (no
+    // tongue reaches past rel 2.2), which keeps a full-screen window cheap:
+    // the sky above the fire only pays for glow and embers.
     // Stretched tall (x squeezed, y relaxed) so the noise forms tongues, not clouds.
-    vec2 q = vec2(x * 3.4, v * 1.35 - phase * 1.5);
-    vec2 warp = vec2(fbm(q * 0.7 + vec2(0.0, phase * 0.3)), fbm(q * 0.7 + vec2(5.2, 1.3)));
-    float n = fbm(q + (warp - 0.5) * vec2(1.1, 0.6));
+    float n = 0.47;
+    if (rel < 2.3) {
+        vec2 q = vec2(x * 3.4, v * 1.35 - phase * 1.5);
+        vec2 warp = vec2(fbm(q * 0.7 + vec2(0.0, phase * 0.3)), fbm(q * 0.7 + vec2(5.2, 1.3)));
+        n = fbm(q + (warp - 0.5) * vec2(1.1, 0.6));
+    }
 
     // 3 · fuel: solid near the base, torn into tongues near the top.
-    float rel = v / h;                               // 0 base → 1 nominal flame top
     float fuel = 1.0 - rel;
     fuel += (n - 0.47) * (0.25 + 1.55 * rel);
+    fuel -= smoothstep(1.4, 2.2, rel) * 0.8;                            // cap the wildest licks
     fuel -= smoothstep(0.0, 1.0, abs(uv.x - 0.5) * 2.0 - 0.96) * 0.6;   // soft side edges
     // The heat front: a band of extra heat rising through the flames after an
     // ignition. Tongues stretch as it passes, then it fades near the top.
     float wave = frontHeat * exp(-pow((rel - front) / 0.22, 2.0));
     fuel += 0.30 * wave * (0.6 + 0.8 * n);
+    // Soft ceiling: a tongue that reaches the window's far edge dissolves
+    // over the last stretch instead of being sliced off by the border.
+    float ceiling = smoothstep(1.0, 0.86, vw);
     // Feathered edge: wider when translucent, so tongues dissolve into the wallpaper.
-    float flame = smoothstep(0.0, mix(0.18, 0.34, translucency), fuel);
+    float flame = smoothstep(0.0, mix(0.18, 0.34, translucency), fuel) * ceiling;
 
     // 4 · temperature: hotter near the base, flashes on every ignition.
     // The turbulence feeds the temperature too, so color follows the tongues
@@ -154,7 +202,8 @@ void main() {
     vec3 col = ramp(temp, heat);
 
     // A tight halo just past the flame edge.
-    float halo = exp(-max(-fuel, 0.0) * 9.0) * (1.0 - flame) * (0.16 + 0.40 * heat) * smoothstep(1.6, 0.4, rel);
+    float halo = exp(-max(-fuel, 0.0) * 9.0) * (1.0 - flame) * (0.16 + 0.40 * heat)
+               * smoothstep(1.6, 0.4, rel) * ceiling;
 
     // 5 · glow. The aura is the light the fire throws onto the wallpaper:
     // full strength in the gaps between tongues, falling off with distance
@@ -169,29 +218,36 @@ void main() {
     aura *= glowAmt * 0.55 * (1.0 - flame * 0.6);
     // Fade out before the window's far edge and sides: light that reaches the
     // border would show the window as a hard rectangle on the desktop.
-    aura *= smoothstep(1.0, 0.70, v) * smoothstep(0.0, 0.06, uv.x) * smoothstep(1.0, 0.94, uv.x);
+    aura *= smoothstep(1.0, 0.70, vw) * smoothstep(0.0, 0.06, uv.x) * smoothstep(1.0, 0.94, uv.x);
     vec3 auraCol = mix(mix(bodyColor.rgb, midColor.rgb, 0.5), tipColor.rgb, smoothstep(0.0, 0.6, above / reach));
 
-    // 6 · sparks drifting up, cooling as they rise.
-    float sparkA = 0.0;
+    // 6 · embers, thrown up by cymbals and ignitions, cooling as they climb.
+    // A burning fire always sheds some; hits throw showers.
+    float emberCore = 0.0, emberBloom = 0.0, emberCenter = 0.0, cool = 0.0;
     if (look.y > 0.001) {
-        vec2 grid = vec2(x * 7.0, v * 5.0 - phase * 2.6);
-        vec2 cell = floor(grid);
-        vec2 rnd = hash22(cell);
-        float chance = look.y * (0.04 + 0.10 * bed + 0.50 * burst);
-        if (rnd.x < chance) {
-            vec2 pos = 0.3 + 0.4 * hash22(cell + 7.7);
-            pos.x += 0.12 * sin(phase * 5.0 + rnd.y * 40.0);             // a little sway
-            vec2 dv = (fract(grid) - pos) * vec2(1.0, 0.75);
-            float d = length(dv);
-            // Born inside the flames, cooling out over a short climb above them.
-            float life = 1.0 - smoothstep(h * 0.6, h + 0.25 + 0.2 * burst, v);
-            float flicker = 0.7 + 0.3 * sin(phase * 25.0 + rnd.y * 60.0);
-            sparkA = (smoothstep(0.07, 0.0, d) + 0.35 * smoothstep(0.2, 0.0, d)) * life * flicker;
-            sparkA = min(sparkA, 1.0);
+        float climb = 0.55 + 0.60 * burst + 0.30 * heat;        // how far above the flames they live
+        float top = h + climb;
+        if (v < top) {
+            float density = look.y * (0.30 + 0.30 * bed + 0.80 * burst + 0.30 * heat);
+            vec2 p = vec2(x, v);
+            vec3 near = emberLayer(p, phase, density * 0.45, 5.0, 0.95, 0.14, 3.1);
+            vec3 far = emberLayer(p, phase, density * 0.35, 9.0, 0.60, 0.10, 11.7) * 0.7;
+            // Born in the upper flames, fading out as they cool.
+            float life = smoothstep(h * 0.45, h * 0.85, v) * (1.0 - smoothstep(h + climb * 0.45, top, v));
+            life *= ceiling * smoothstep(0.0, 0.03, uv.x) * smoothstep(1.0, 0.97, uv.x);
+            emberCore = max(near.x, far.x) * life;
+            emberBloom = max(near.y, far.y) * life;
+            emberCenter = max(near.z, far.z) * life;
+            cool = smoothstep(h, top, v);
         }
     }
-    vec3 sparkCol = mix(bodyColor.rgb, vec3(1.0, 0.93, 0.75), 0.6);
+    // An orange-gold speck with a white-hot center, cooling as it climbs.
+    // Two tones read on any background: the white center on dark wallpaper,
+    // the saturated orange body on bright wallpaper (white alone vanishes
+    // there, a dim red speck vanishes on the fire's own glow).
+    vec3 emberBody = mix(vec3(1.0, 0.62, 0.16), vec3(1.0, 0.44, 0.10), cool);
+    vec3 emberHot = mix(emberBody, vec3(1.0, 0.97, 0.86), emberCenter * (1.0 - 0.6 * cool));
+    vec3 emberWarm = mix(vec3(1.0, 0.58, 0.20), mix(bodyColor.rgb, tipColor.rgb, 0.3), cool * 0.6);
 
     // 7 · Blending like real fire.
     //
@@ -221,13 +277,22 @@ void main() {
     float peak = hotness * hotness * hotness * hotness;   // only the very hottest spots
     rgb += col * flame * peak * glowAmt * (0.10 + 0.18 * heat);
 
-    // Halo and sparks are pure additive light (zero alpha): they can only
+    // Halo and aura are pure additive light (zero alpha): they can only
     // brighten the wallpaper. Blending faint orange the normal way mixes it
     // into muddy brown around every tongue. The halo uses the tip color
     // (crimson in the Ascend palette): faded crimson reads as wine.
     rgb += tipColor.rgb * halo;
     rgb += auraCol * aura;
-    rgb += sparkCol * sparkA * (1.0 - flame * 0.7);
+    // Embers: the core is a solid speck that also covers what's behind it,
+    // so it reads on a bright wallpaper and on top of the fire's own glow
+    // instead of melting into them. The bloom covers a little too: pure
+    // added light would wash a bright wallpaper to white around each ember
+    // (a donut), while a slight cover tints it warm instead.
+    float hide = 1.0 - flame * 0.35;                    // a little dimmer inside the flames
+    float speck = emberCore * hide;
+    float haze = emberBloom * hide * (1.0 - speck);
+    rgb = rgb * (1.0 - speck * 0.9) + emberHot * speck * 1.25 + emberWarm * haze * 0.35;
+    a = a + (1.0 - a) * (speck * 0.9 + haze * 0.30);
 
     fragColor = vec4(rgb, a) * qt_Opacity;
 }

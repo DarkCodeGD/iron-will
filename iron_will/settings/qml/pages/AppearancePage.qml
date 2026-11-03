@@ -14,6 +14,7 @@ PageScaffold {
     readonly property bool fire: mode === "fire"
     readonly property bool bars: mode === "bars" || mode === "mirror"
     readonly property int windowHeight: { rev; return backend.get("layout.height") }
+    readonly property bool fullHeight: { rev; return backend.get("layout.full_height") }
     readonly property bool naturalFire: { rev; return backend.get("fire.palette") === "natural" }
     readonly property var modeHints: ({
         bars: "Classic spectrum bars, bass on the left",
@@ -69,7 +70,7 @@ PageScaffold {
 
         // Fire needs height to breathe; the default strip is made for bars.
         Rectangle {
-            visible: page.windowHeight < 200
+            visible: page.windowHeight < 200 && !page.fullHeight
             Layout.fillWidth: true
             implicitHeight: hintRow.implicitHeight + 24
             radius: Theme.radiusInner
@@ -89,6 +90,10 @@ PageScaffold {
                     kind: "ghost"; text: "Make it 260 px"
                     onClicked: backend.set("layout.height", 260)
                 }
+                PillButton {
+                    kind: "ghost"; text: "Full screen"
+                    onClicked: backend.setFullHeight(true)
+                }
             }
         }
 
@@ -101,7 +106,8 @@ PageScaffold {
         Divider {}
         SliderRow {
             key: "fire.height"; label: "Flame height"; decimals: 2
-            description: "How much of the visualizer the flames reach at full blast"
+            description: page.fullHeight ? "How much of the screen the flames reach at full blast"
+                                         : "How much of the visualizer the flames reach at full blast. Tongues that hit the top fade out; turn on Full screen height in Layout for headroom."
             format: function (v) { return Math.round(v * 100) + "%" }
         }
         SliderRow {

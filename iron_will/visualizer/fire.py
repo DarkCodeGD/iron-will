@@ -91,7 +91,7 @@ SPREAD = 5.0          # 1/s — sideways diffusion between neighbouring columns
 FRONT_SPEED = 2.6     # flame heights per second the heat front rises
 FRONT_FADE = 0.45     # s — the front cools as it climbs
 FRONT_GAP = 0.28      # s — at most one new front this often (no strobing)
-SPARK_RELEASE = 0.30  # s
+SPARK_RELEASE = 0.45  # s — a shower of embers hangs in the air a moment
 PILOT = 0.08          # flame height share left at silence: a pilot light
 
 
@@ -245,9 +245,11 @@ class FireAnalyzer:
         self.front += dt * FRONT_SPEED / r
         self.front_heat *= math.exp(-dt / (FRONT_FADE * r))
 
-        # ── sparks: cymbal cracks, plus embers thrown by fast flare-ups ────
-        thrown = max(0.0, self._flare.v) * 0.12
-        self.sparks = max(min(1.0, crack * 0.7 * k + thrown), self.sparks * math.exp(-dt / SPARK_RELEASE))
+        # ── sparks: cymbal cracks, plus showers thrown by ignitions ─────────
+        # A hit throws embers the instant it lands (inject is the jump this
+        # frame), and a fast flare-up keeps throwing them while it climbs.
+        thrown = 1.6 * inject * k + max(0.0, self._flare.v) * 0.12
+        self.sparks = max(min(1.0, crack * 0.8 * k + thrown), self.sparks * math.exp(-dt / SPARK_RELEASE))
 
         # ── speed: the fire churns harder as it gets hotter ─────────────────
         self.drive = _ema(self.drive, min(1.0, 0.5 * self.bed + 0.6 * self.heat), dt, DRIVE_TAU)
