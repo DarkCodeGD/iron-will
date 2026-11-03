@@ -158,9 +158,12 @@ class VisualizerItem(QQuickPaintedItem):
     fireColsB = Property(QVector4D, lambda self: _vec4(self._fire.columns, 4), notify=fireFrame)
     fireColsC = Property(QVector4D, lambda self: _vec4(self._fire.columns, 8), notify=fireFrame)
     fireColsD = Property(QVector4D, lambda self: _vec4(self._fire.columns, 12), notify=fireFrame)
-    # motion: x = phase, y = kick surge, z = spark burst, w = guitar bed
+    # motion: x = phase, y = heat (brightness flash), z = sparks, w = guitar bed
     fireMotion = Property(QVector4D, lambda self: QVector4D(
-        self._fire.phase, self._fire.surge, self._fire.sparks, self._fire.bed), notify=fireFrame)
+        self._fire.phase, self._fire.heat, self._fire.sparks, self._fire.bed), notify=fireFrame)
+    # ignite: x = flare (height), y = heat-front height, z = front strength, w = glow setting
+    fireIgnite = Property(QVector4D, lambda self: QVector4D(
+        self._fire.flare, self._fire.front, self._fire.front_heat, self._cfg["fire.glow"]), notify=fireFrame)
     fireOpacity = Property(float, lambda self: self._cfg["visualizer.opacity"] * self._fade, notify=fireFrame)
 
     # ── data input ────────────────────────────────────────────────────────
@@ -199,7 +202,7 @@ class VisualizerItem(QQuickPaintedItem):
         self._physics.configure(c["motion.attack_ms"], c["motion.decay_ms"],
                                 c["motion.peak_hold_ms"], c["motion.peak_gravity"])
         self._physics.resize(config.cava_bar_count(c))
-        self._fire.configure(c["fire.intensity"], c["fire.speed"])
+        self._fire.configure(c["fire.intensity"], c["fire.speed"], c["fire.reaction"])
         self._fire_colors = _fire_palette(self._colors, c["fire.palette"])
         self.fireStyleChanged.emit()
         self._demo_signal.style = presets.demo_style_for(c)
@@ -233,7 +236,7 @@ class VisualizerItem(QQuickPaintedItem):
         self._physics.step(self._targets, dt)
         fire = self._is_fire()
         if fire:
-            self._fire.step(self._targets, self._physics.values, dt)
+            self._fire.step(self._targets, dt)  # fire has its own (combustion) dynamics
 
         silent_for = now - self._last_loud
         idle = c["motion.idle_fade"] and silent_for > c["motion.idle_timeout"]

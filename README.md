@@ -44,17 +44,25 @@ Four render modes, all anchored right above the Plasma panel and click-through:
 
 ## Fire mode
 
-Stylized flames drawn by a GPU shader, built for rock and metal. Each part of the band drives a different part of the fire:
+Stylized flames drawn by a GPU shader, built for rock and metal. The music never sets the flame height directly. It feeds a small combustion model, so every reaction catches, flares and dies down like real fire instead of snapping to the beat:
+
+1. **A hit throws fuel on the fire.** Kicks add a lot, snares and cymbals a little.
+2. **It ignites:** a flash of heat at the base about 100 ms later, so brightness leads.
+3. **Whoomph:** the flames shoot up on a damped spring (peak around 300 ms, with a touch of overshoot), while a band of heat rises through the tongues.
+4. **It spreads** sideways to neighbouring flames, like fire catching along a log, then **burns down** over about a second.
 
 | In the mix | In the fire |
 |---|---|
-| **Kick drum, bass** | a *surge*: the flames jump and the core flashes white-hot, then drop back within ~80 ms, so 16th-note double bass still reads as separate punches |
-| **Rhythm guitars, vocals** | the flame *bed*: how tall the fire burns |
-| **Snare, cymbals** | *sparks*: a crash throws a shower of embers |
-| **Overall drive** | *speed*: calm parts lick lazily, blast beats make it roar |
+| **Kick drum, bass** | ignitions: heat flashes and flare-ups. Non-stop double bass builds a big, roaring fire that still breathes instead of jittering |
+| **Rhythm guitars, vocals** | the flame *bed*: the steady body of the fire |
+| **Snare, cymbals** | a little fuel, and *sparks*: a crash throws a shower of embers |
+| **Overall heat** | *speed*: calm parts lick lazily, a hot fire churns hard |
 
 Metal is mastered loud, so the level barely moves and a fire that followed plain loudness would sit at full height. Instead, each detector tracks how far its part of the spectrum jumps above its own recent average, scaled against the biggest recent hit. A kick still lands on top of a wall of guitars.
 
+Fire has its own dynamics: the Motion page's attack and decay shape the bars, not the flames. Use **Reaction** in the Fire card instead, from *Slow burn* to *Explosive*.
+
+- **Glow:** the fire throws light onto the wallpaper around it, brightest in the gaps between tongues and fading to wine-red higher up, flickering like firelight on a wall. The hottest spots bloom toward white. The **Glow** slider sets how much.
 - **Blending:** fire is light, not paint. The flames *add* their glow to your wallpaper and only partly hide it: wispy tips are see-through, the hot core is nearly solid. The **Translucency** slider goes from solid stylized flames to ghostly; lower it on bright wallpapers, where translucent flames wash out like fire in daylight.
 - **Colors:** *Your colors* uses your gradient (first stop at the base, last at the tips, so the **Ascend** preset gives orange→crimson fire and a cool gradient gives blue fire). *Natural fire* ignores your colors.
 - **Height:** fire needs room. It comes alive at 220–300 px, and the Fire card offers a one-click resize when your visualizer is shorter.

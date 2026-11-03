@@ -4,17 +4,22 @@
 // Runs once per pixel on the GPU. The idea, inside-out:
 //
 //  1. A height profile H(x): 16 column heights from the music, interpolated
-//     smoothly across the width, scaled by the flame bed + kick surge.
+//     smoothly across the width, scaled by the flame bed + ignition flare.
 //  2. Rising turbulence: fractal noise scrolled upward by `phase` and warped
 //     by a second noise layer, so flames twist instead of sliding.
 //  3. A "fuel" field: 1 at the base, 0 at the flame top, eaten away by the
 //     turbulence — stronger the higher you go, which splits the top into
 //     flickering tongues while the base stays solid.
 //  4. Temperature: fuel → tip color → body color → hot → white-hot core.
-//     The kick surge pushes the whole ramp hotter for a flash.
-//  5. Sparks: a grid of cells drifting upward; a few cells (more on cymbal
-//     hits) hold a tiny glowing ember that cools as it rises.
-//  6. Blending like real fire: emission + absorption (see the end).
+//     Each ignition's heat flash pushes the whole ramp hotter.
+//  5. Glow: an aura of light thrown onto the wallpaper, plus core bloom.
+//  6. Sparks: a grid of cells drifting upward; a few cells (more on cymbal
+//     hits and flare-ups) hold a tiny glowing ember that cools as it rises.
+//  7. Blending like real fire: emission + absorption (see the end).
+//
+// Motion comes from a combustion model on the CPU (fire.py): hits add fuel,
+// heat flashes first, the flare (height) follows on a spring, and a heat
+// front rises through the flames. The shader just renders that state.
 
 layout(location = 0) in vec2 qt_TexCoord0;
 layout(location = 0) out vec4 fragColor;
@@ -26,11 +31,12 @@ layout(std140, binding = 0) uniform buf {
     vec4 colsB;        // 4..7
     vec4 colsC;        // 8..11
     vec4 colsD;        // 12..15
-    vec4 motion;       // x = phase, y = surge, z = sparks burst, w = bed
+    vec4 motion;       // x = phase, y = heat (brightness flash), z = sparks, w = bed (guitars)
     vec4 look;         // x = max height share, y = spark amount, z = up (1) / down (0), w = aspect (w/h)
     vec4 tipColor;     // coolest visible flame (tongue tips)
     vec4 midColor;
     vec4 bodyColor;    // hottest user color, near the base
+    vec4 ignite;       // x = flare (extra height), y = heat-front height, z = front strength, w = glow amount
     float translucency; // 0 = solid stylized flames … 1 = ghostly, see-through
 };
 
@@ -92,7 +98,7 @@ float profile(float u) {                    // smooth interpolation over 16 colu
 }
 
 // ── temperature → color ────────────────────────────────────────────────────
-vec3 ramp(float t, float surge) {
+vec3 ramp(float t, float heat) {
     // Hot stays saturated gold: mixing orange toward cream/grey is exactly
     // what turns fire beige or brown, so we only push it toward yellow.
     // Lighten toward gold, scaled by the headroom each channel has left:
@@ -102,21 +108,22 @@ vec3 ramp(float t, float surge) {
     vec3 c = mix(tipColor.rgb, midColor.rgb, smoothstep(0.0, 0.30, t));
     c = mix(c, bodyColor.rgb, smoothstep(0.25, 0.55, t));
     c = mix(c, hot, smoothstep(0.62, 0.88, t));
-    c = mix(c, core, smoothstep(0.90, 1.0, t) * surge);   // white-hot only on the kick
+    c = mix(c, core, smoothstep(0.90, 1.0, t) * heat);   // white-hot only in the flash
     return c;
 }
 
 void main() {
-    float phase = motion.x, surge = motion.y, burst = motion.z, bed = motion.w;
+    float phase = motion.x, heat = motion.y, burst = motion.z, bed = motion.w;
+    float flare = ignite.x, front = ignite.y, frontHeat = ignite.z, glowAmt = ignite.w;
     float aspect = max(look.w, 0.01);
 
     vec2 uv = qt_TexCoord0;
     float v = look.z > 0.5 ? 1.0 - uv.y : uv.y;     // 0 at the base, 1 at the far edge
     float x = uv.x * aspect;                         // square noise cells whatever the size
 
-    // 1 · height: pilot flame + bed + this column's music, with the kick on top.
+    // 1 · height: pilot flame + guitar bed + this column's music + the ignition flare.
     float music = profile(uv.x);
-    float h = look.x * clamp(0.08 + 0.50 * bed * (0.45 + 0.55 * music) + 0.42 * music + 0.30 * surge, 0.0, 1.0);
+    float h = look.x * clamp(0.07 + 0.45 * bed * (0.5 + 0.5 * music) + 0.33 * music + 0.40 * flare, 0.0, 1.0);
     h = max(h, 0.02);
 
     // 2 · rising, self-warping turbulence.
@@ -130,19 +137,42 @@ void main() {
     float fuel = 1.0 - rel;
     fuel += (n - 0.47) * (0.25 + 1.55 * rel);
     fuel -= smoothstep(0.0, 1.0, abs(uv.x - 0.5) * 2.0 - 0.96) * 0.6;   // soft side edges
+    // The heat front: a band of extra heat rising through the flames after an
+    // ignition. Tongues stretch as it passes, then it fades near the top.
+    float wave = frontHeat * exp(-pow((rel - front) / 0.22, 2.0));
+    fuel += 0.30 * wave * (0.6 + 0.8 * n);
     // Feathered edge: wider when translucent, so tongues dissolve into the wallpaper.
     float flame = smoothstep(0.0, mix(0.18, 0.34, translucency), fuel);
 
-    // 4 · temperature: hotter near the base, flashes on the kick.
+    // 4 · temperature: hotter near the base, flashes on every ignition.
     // The turbulence feeds the temperature too, so color follows the tongues
     // instead of lying in flat horizontal stripes.
-    float temp = clamp(fuel * (0.74 + 0.30 * surge + 0.12 * bed) + (n - 0.47) * 0.45, 0.0, 1.0);
-    vec3 col = ramp(temp, surge);
+    // The heat flash is added *through the turbulence* (patchy, licking),
+    // not as a flat multiplier, which blew the whole base out to white.
+    float temp = clamp(fuel * (0.72 + 0.10 * bed) + (n - 0.47) * 0.45 + 0.25 * wave
+                       + heat * 0.30 * (n - 0.25) * smoothstep(0.0, 0.4, fuel), 0.0, 1.0);
+    vec3 col = ramp(temp, heat);
 
-    // A soft halo just past the flame edge: the light the fire throws.
-    float halo = exp(-max(-fuel, 0.0) * 9.0) * (1.0 - flame) * (0.16 + 0.40 * surge) * smoothstep(1.6, 0.4, rel);
+    // A tight halo just past the flame edge.
+    float halo = exp(-max(-fuel, 0.0) * 9.0) * (1.0 - flame) * (0.16 + 0.40 * heat) * smoothstep(1.6, 0.4, rel);
 
-    // 5 · sparks drifting up, cooling as they rise.
+    // 5 · glow. The aura is the light the fire throws onto the wallpaper:
+    // full strength in the gaps between tongues, falling off with distance
+    // above the flame line, reaching higher and brighter as the fire heats
+    // up. It slowly flickers, like firelight on a wall. Near the flames it is
+    // the flame's own color; far out it shifts to the tip color, so a faint
+    // glow reads as wine-red instead of murky brown.
+    float above = max(v - h, 0.0);
+    float reach = 0.10 + 0.28 * glowAmt + 0.12 * heat;
+    float flick = 0.82 + 0.18 * vnoise(vec2(x * 0.9, phase * 2.2));
+    float aura = exp(-above / reach) * (0.30 + 0.70 * heat) * (0.4 + 0.6 * smoothstep(0.0, 0.5, music + bed * 0.5)) * flick;
+    aura *= glowAmt * 0.55 * (1.0 - flame * 0.6);
+    // Fade out before the window's far edge and sides: light that reaches the
+    // border would show the window as a hard rectangle on the desktop.
+    aura *= smoothstep(1.0, 0.70, v) * smoothstep(0.0, 0.06, uv.x) * smoothstep(1.0, 0.94, uv.x);
+    vec3 auraCol = mix(mix(bodyColor.rgb, midColor.rgb, 0.5), tipColor.rgb, smoothstep(0.0, 0.6, above / reach));
+
+    // 6 · sparks drifting up, cooling as they rise.
     float sparkA = 0.0;
     if (look.y > 0.001) {
         vec2 grid = vec2(x * 7.0, v * 5.0 - phase * 2.6);
@@ -163,7 +193,7 @@ void main() {
     }
     vec3 sparkCol = mix(bodyColor.rgb, vec3(1.0, 0.93, 0.75), 0.6);
 
-    // 6 · Blending like real fire.
+    // 7 · Blending like real fire.
     //
     // Fire is a light source, not paint: it *emits* light and only partly
     // *absorbs* what's behind it. With premultiplied alpha the compositor does
@@ -187,11 +217,16 @@ void main() {
     vec3 rgb = col * flame * glow;
     float a = flame * cover;
 
+    // Core bloom: overdrive the hottest flame so it burns toward white.
+    float peak = hotness * hotness * hotness * hotness;   // only the very hottest spots
+    rgb += col * flame * peak * glowAmt * (0.10 + 0.18 * heat);
+
     // Halo and sparks are pure additive light (zero alpha): they can only
     // brighten the wallpaper. Blending faint orange the normal way mixes it
     // into muddy brown around every tongue. The halo uses the tip color
     // (crimson in the Ascend palette): faded crimson reads as wine.
     rgb += tipColor.rgb * halo;
+    rgb += auraCol * aura;
     rgb += sparkCol * sparkA * (1.0 - flame * 0.7);
 
     fragColor = vec4(rgb, a) * qt_Opacity;

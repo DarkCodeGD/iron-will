@@ -54,6 +54,10 @@ intensity = 1.0
 sparks = 0.6
 # Flame speed: how fast the flames churn (the music speeds them up further) — 0.3 … 2.5
 speed = 1.0
+# Glow: firelight thrown onto the wallpaper around the flames, and core bloom (0 = none) — 0 … 1
+glow = 0.6
+# How fast the fire catches and dies down: 0 = slow, heavy burn, 1 = snappy flare-ups — 0 … 1
+reaction = 0.5
 # How see-through the flames are: 0 = solid, 1 = ghostly (hot cores stay bright) — 0 … 1
 translucency = 0.6
 # Flame colors: your gradient colors, or natural fire — colors | natural

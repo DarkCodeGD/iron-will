@@ -19,7 +19,7 @@ PageScaffold {
         bars: "Classic spectrum bars, bass on the left",
         mirror: "Mirror puts the bass in the middle",
         wave: "A smooth line through every band",
-        fire: "GPU flames: kicks surge, guitars feed the bed, cymbals throw sparks"
+        fire: "GPU flames: every hit ignites the fire, guitars feed it, cymbals throw sparks"
     })
 
     PreviewCard {}
@@ -105,13 +105,23 @@ PageScaffold {
             format: function (v) { return Math.round(v * 100) + "%" }
         }
         SliderRow {
+            key: "fire.glow"; label: "Glow"; decimals: 2
+            description: "Firelight cast onto the wallpaper around the flames, and the bloom of the hot core"
+            format: function (v) { return v < 0.005 ? "Off" : Math.round(v * 100) + "%" }
+        }
+        SliderRow {
+            key: "fire.reaction"; label: "Reaction"; decimals: 2
+            description: "How the fire catches: low = slow, heavy burn, high = snappy flare-ups. Hits always ignite and die down like real fire."
+            format: function (v) { return v < 0.25 ? "Slow burn" : v < 0.75 ? "Natural" : "Explosive" }
+        }
+        SliderRow {
             key: "fire.translucency"; label: "Translucency"; decimals: 2
             description: "How much the wallpaper shows through, like real fire: wispy tips go first, the hot core stays bright. Lower it on bright wallpapers."
             format: function (v) { return Math.round(v * 100) + "%" }
         }
         SliderRow {
             key: "fire.intensity"; label: "Intensity"; decimals: 2
-            description: "How hard the music drives the fire: kick surges, height, heat"
+            description: "How much fuel each hit throws on the fire: bigger flare-ups, hotter flashes"
             format: function (v) { return Math.round(v * 100) + "%" }
         }
         SliderRow {

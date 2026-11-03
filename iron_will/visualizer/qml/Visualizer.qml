@@ -34,6 +34,7 @@ Item {
         property vector4d colsC: vis.fireColsC
         property vector4d colsD: vis.fireColsD
         property vector4d motion: vis.fireMotion
+        property vector4d ignite: vis.fireIgnite
         property vector4d look: Qt.vector4d(vis.fireLook.x, vis.fireLook.y, vis.fireLook.z,
                                             width / Math.max(1, height))
         property color tipColor: vis.fireTip

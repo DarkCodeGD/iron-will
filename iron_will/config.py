@@ -137,6 +137,8 @@ FIELDS: tuple[Field, ...] = (
     Field("fire", "intensity", 1.0, "How hard the music drives the fire", 0.3, 2.0),
     Field("fire", "sparks", 0.6, "Spark amount: embers thrown up by snare and cymbal hits (0 = none)", 0.0, 1.0),
     Field("fire", "speed", 1.0, "Flame speed: how fast the flames churn (the music speeds them up further)", 0.3, 2.5),
+    Field("fire", "glow", 0.6, "Glow: firelight thrown onto the wallpaper around the flames, and core bloom (0 = none)", 0.0, 1.0),
+    Field("fire", "reaction", 0.5, "How fast the fire catches and dies down: 0 = slow, heavy burn, 1 = snappy flare-ups", 0.0, 1.0),
     Field("fire", "translucency", 0.6, "How see-through the flames are: 0 = solid, 1 = ghostly (hot cores stay bright)", 0.0, 1.0),
     Field("fire", "palette", "colors", "Flame colors: your gradient colors, or natural fire",
           choices=("colors", "natural")),
