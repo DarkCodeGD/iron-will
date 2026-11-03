@@ -1,0 +1,104 @@
+# Iron Will — desktop audio toolkit configuration
+# Edit by hand or with `iron-will-settings`. Changes apply live.
+# Invalid values fall back to their defaults; unknown keys are ignored.
+
+# ── Visualizer · look ───────────────────────────────────────────
+[visualizer]
+# Render style — bars | mirror | wave
+mode = "bars"
+# Number of bars / wave points — 8 … 256
+bar_count = 64
+# Gap between bars in pixels — 0 … 32
+spacing = 4
+# Bar corner rounding: 0 = square, 1 = fully pill-shaped — 0 … 1
+roundness = 1.0
+# Resting bar height in pixels while audio is playing — 0 … 20
+min_height = 2
+# Which way bars grow — up | down
+direction = "up"
+# Overall opacity — 0.05 … 1
+opacity = 0.9
+# Colors: follow the Plasma accent color, or use the custom list — accent | custom
+color_source = "accent"
+# Custom gradient stops (1 = solid color, up to 6)
+colors = ["#2EC4B6", "#3A86FF", "#8338EC"]
+# Gradient axis — horizontal | vertical
+gradient_direction = "vertical"
+# Draw falling peak caps above bars
+peaks = true
+# Frames per second (also cava's analysis rate) — 24 … 165
+fps = 60
+
+# ── Visualizer · motion & physics ───────────────────────────────
+[motion]
+# Rise time constant in ms (lower = punchier) — 0 … 500
+attack_ms = 35
+# Fall time constant in ms (higher = smoother) — 10 … 2000
+decay_ms = 220
+# How long a peak cap hangs before falling — 0 … 3000
+peak_hold_ms = 400
+# Peak cap fall acceleration (bar-heights per second²) — 0.1 … 20
+peak_gravity = 2.5
+# Fade the visualizer out when audio goes silent
+idle_fade = true
+# Seconds of silence before fading out — 0.5 … 60
+idle_timeout = 4.0
+
+# ── Visualizer · placement on screen ────────────────────────────
+[layout]
+# Screen edge to attach to — bottom | top
+anchor = "bottom"
+# Horizontal alignment — left | center | right | stretch
+align = "center"
+# Width in logical pixels (ignored when align = stretch) — 50 … 7680
+width = 960
+# Height in logical pixels — 16 … 2160
+height = 90
+# Horizontal offset: from the aligned edge, or shift when centered — -4000 … 4000
+margin_x = 0
+# Distance from the anchored edge (or from the panel, see respect_panels) — 0 … 4000
+margin_y = 0
+# Stacking layer: bottom = above wallpaper, below windows — background | bottom | top
+layer = "bottom"
+# Sit above panels instead of behind them (Wayland: exclusive zones)
+respect_panels = true
+
+# ── Visualizer · audio analysis (cava) ──────────────────────────
+[analysis]
+# Audio capture backend; auto tries PipeWire, then PulseAudio (works via pipewire-pulse) — auto | pipewire | pulse
+input = "auto"
+# Sensitivity in percent — 10 … 500
+sensitivity = 100
+# Let cava auto-adjust sensitivity to the volume
+autosens = true
+# Lowest analysed frequency in Hz — 20 … 1000
+low_cutoff = 50
+# Highest analysed frequency in Hz — 2000 … 20000
+high_cutoff = 12000
+# cava's own smoothing, 0–100 (our physics does the rest) — 0 … 100
+noise_reduction = 20
+
+# ── Session sounds ──────────────────────────────────────────────
+[sounds]
+# Folder with .mp3 .wav .ogg .flac .opus files (searched recursively)
+directory = "~/Music/login_sounds"
+# Play when the session starts
+on_login = true
+# Play after waking from suspend
+on_resume = true
+# Play after unlocking the screen
+on_unlock = true
+# Seconds to wait after login — 0 … 30
+login_delay = 3.0
+# Seconds to wait after resume (audio devices re-initialising) — 0 … 30
+resume_delay = 2.5
+# Seconds to wait after unlock — 0 … 30
+unlock_delay = 0.5
+# Minimum seconds between two sounds (stops resume + unlock double-plays) — 0 … 600
+cooldown = 30
+# Playback volume — 0 … 1
+volume = 0.8
+# Audio player to use — auto | pw-play | paplay | ffplay | mpv
+backend = "auto"
+# Never play the same track twice in a row
+avoid_repeat = true

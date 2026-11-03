@@ -1,0 +1,15 @@
+[Unit]
+Description=Iron Will desktop audio visualizer
+Documentation=file://@APP_DIR@/README.md
+PartOf=graphical-session.target
+# Start after the shell so panels (and their exclusive zones) already exist.
+After=graphical-session.target plasma-plasmashell.service pipewire.service
+
+[Service]
+Type=simple
+ExecStart=@BIN_DIR@/iron-will-visualizer
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=graphical-session.target

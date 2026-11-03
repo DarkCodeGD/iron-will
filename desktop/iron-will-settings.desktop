@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Iron Will
+GenericName=Audio Visualizer & Session Sounds
+Comment=Customize the desktop audio visualizer and session sounds
+Exec=@BIN_DIR@/iron-will-settings
+Icon=iron-will
+Terminal=false
+Categories=AudioVideo;Audio;Settings;Qt;
+Keywords=visualizer;cava;sound;login;audio;spectrum;
+StartupWMClass=iron-will-settings

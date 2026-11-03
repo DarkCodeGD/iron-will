@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Flat app mark: slate tile, pill bars in teal with one complementary coral bar. -->
+  <rect x="4" y="4" width="120" height="120" rx="34" fill="#18212A"/>
+  <rect x="26" y="62" width="12" height="36" rx="6" fill="#2EC4B6"/>
+  <rect x="44" y="44" width="12" height="54" rx="6" fill="#2EC4B6"/>
+  <rect x="62" y="30" width="12" height="68" rx="6" fill="#FF6B5B"/>
+  <rect x="80" y="50" width="12" height="48" rx="6" fill="#2EC4B6"/>
+  <rect x="98" y="66" width="12" height="32" rx="6" fill="#2EC4B6" opacity="0.6"/>
+</svg>
