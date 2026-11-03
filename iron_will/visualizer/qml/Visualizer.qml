@@ -39,5 +39,6 @@ Item {
         property color tipColor: vis.fireTip
         property color midColor: vis.fireMid
         property color bodyColor: vis.fireBody
+        property real translucency: vis.fireTranslucency
     }
 }

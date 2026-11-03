@@ -54,6 +54,8 @@ intensity = 1.0
 sparks = 0.6
 # Flame speed: how fast the flames churn (the music speeds them up further) — 0.3 … 2.5
 speed = 1.0
+# How see-through the flames are: 0 = solid, 1 = ghostly (hot cores stay bright) — 0 … 1
+translucency = 0.6
 # Flame colors: your gradient colors, or natural fire — colors | natural
 palette = "colors"
 

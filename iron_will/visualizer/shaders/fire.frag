@@ -14,9 +14,7 @@
 //     The kick surge pushes the whole ramp hotter for a flash.
 //  5. Sparks: a grid of cells drifting upward; a few cells (more on cymbal
 //     hits) hold a tiny glowing ember that cools as it rises.
-//
-// Output is premultiplied alpha: the flames sit on the wallpaper with no box,
-// and their glow is added as light (see the composite at the end).
+//  6. Blending like real fire: emission + absorption (see the end).
 
 layout(location = 0) in vec2 qt_TexCoord0;
 layout(location = 0) out vec4 fragColor;
@@ -33,6 +31,7 @@ layout(std140, binding = 0) uniform buf {
     vec4 tipColor;     // coolest visible flame (tongue tips)
     vec4 midColor;
     vec4 bodyColor;    // hottest user color, near the base
+    float translucency; // 0 = solid stylized flames … 1 = ghostly, see-through
 };
 
 // ── noise ──────────────────────────────────────────────────────────────────
@@ -131,7 +130,8 @@ void main() {
     float fuel = 1.0 - rel;
     fuel += (n - 0.47) * (0.25 + 1.55 * rel);
     fuel -= smoothstep(0.0, 1.0, abs(uv.x - 0.5) * 2.0 - 0.96) * 0.6;   // soft side edges
-    float flame = smoothstep(0.0, 0.18, fuel);
+    // Feathered edge: wider when translucent, so tongues dissolve into the wallpaper.
+    float flame = smoothstep(0.0, mix(0.18, 0.34, translucency), fuel);
 
     // 4 · temperature: hotter near the base, flashes on the kick.
     // The turbulence feeds the temperature too, so color follows the tongues
@@ -163,14 +163,34 @@ void main() {
     }
     vec3 sparkCol = mix(bodyColor.rgb, vec3(1.0, 0.93, 0.75), 0.6);
 
-    // Premultiplied composite. The flame body is normal "over" blending; the
-    // halo and sparks are pure *additive light* (color with zero alpha), so
-    // they can only brighten the wallpaper. Blending faint orange over a dark
-    // wallpaper the normal way mixes it into muddy brown, an olive fringe
-    // around every tongue. The halo uses the tip color (crimson in the Ascend
-    // palette): faded crimson reads as wine, faded orange as brown.
-    vec3 rgb = col * flame;
-    float a = flame;
+    // 6 · Blending like real fire.
+    //
+    // Fire is a light source, not paint: it *emits* light and only partly
+    // *absorbs* what's behind it. With premultiplied alpha the compositor does
+    //     result = rgb + wallpaper * (1 - a)
+    // so we can set the two independently:
+    //   emission (rgb) — the flame's own light. Added, never averaged with the
+    //                    wallpaper, so colors stay luminous over anything.
+    //                    Cooler tips glow a little dimmer than the core.
+    //   absorption (a) — how much of the wallpaper the flame hides. Tied to
+    //                    temperature: thin cool tips are see-through wisps,
+    //                    the white-hot core is nearly solid.
+    // translucency = 0 gives back solid, sticker-like stylized flames.
+    float hotness = smoothstep(0.10, 0.90, temp);
+    // Cool parts break into fast, fine streaks (wisps) instead of an even
+    // tint: an even translucent red reads as tinted glass, not fire.
+    float wisp = smoothstep(0.30, 0.80, vnoise(vec2(x * 11.0, v * 3.0 - phase * 3.2)));
+    float wispy = (1.0 - hotness) * translucency;
+    float cover = mix(mix(1.0, 0.06, translucency), mix(1.0, 0.78, translucency), hotness);
+    cover *= mix(1.0, 0.35 + 0.65 * wisp, wispy);
+    float glow = mix(mix(1.0, 0.70, translucency), 1.0, hotness) * mix(1.0, 0.45 + 0.55 * wisp, wispy);
+    vec3 rgb = col * flame * glow;
+    float a = flame * cover;
+
+    // Halo and sparks are pure additive light (zero alpha): they can only
+    // brighten the wallpaper. Blending faint orange the normal way mixes it
+    // into muddy brown around every tongue. The halo uses the tip color
+    // (crimson in the Ascend palette): faded crimson reads as wine.
     rgb += tipColor.rgb * halo;
     rgb += sparkCol * sparkA * (1.0 - flame * 0.7);
 

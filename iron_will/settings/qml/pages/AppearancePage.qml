@@ -105,6 +105,11 @@ PageScaffold {
             format: function (v) { return Math.round(v * 100) + "%" }
         }
         SliderRow {
+            key: "fire.translucency"; label: "Translucency"; decimals: 2
+            description: "How much the wallpaper shows through, like real fire: wispy tips go first, the hot core stays bright. Lower it on bright wallpapers."
+            format: function (v) { return Math.round(v * 100) + "%" }
+        }
+        SliderRow {
             key: "fire.intensity"; label: "Intensity"; decimals: 2
             description: "How hard the music drives the fire: kick surges, height, heat"
             format: function (v) { return Math.round(v * 100) + "%" }

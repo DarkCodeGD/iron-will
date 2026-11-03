@@ -153,6 +153,7 @@ class VisualizerItem(QQuickPaintedItem):
     fireLook = Property(QVector4D, lambda self: QVector4D(
         self._cfg["fire.height"], self._cfg["fire.sparks"],
         1.0 if self._cfg["visualizer.direction"] == "up" else 0.0, 0.0), notify=fireStyleChanged)
+    fireTranslucency = Property(float, lambda self: self._cfg["fire.translucency"], notify=fireStyleChanged)
     fireColsA = Property(QVector4D, lambda self: _vec4(self._fire.columns, 0), notify=fireFrame)
     fireColsB = Property(QVector4D, lambda self: _vec4(self._fire.columns, 4), notify=fireFrame)
     fireColsC = Property(QVector4D, lambda self: _vec4(self._fire.columns, 8), notify=fireFrame)
