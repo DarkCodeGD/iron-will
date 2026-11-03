@@ -20,7 +20,7 @@ from PySide6.QtCore import Property, QLibraryInfo, QObject, QProcess, QTimer, QU
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtQml import QJSValue
 
-from .. import __version__, config, paths
+from .. import __version__, config, paths, presets
 from ..dispatcher.player import Player, list_tracks, pick_track, resolve_chain
 
 log = logging.getLogger("iron_will.settings")
@@ -97,6 +97,25 @@ class SettingsBackend(QObject):
     def resetSection(self, section: str) -> None:
         self._store.reset([f.path for f in config.FIELDS if f.section == section])
         self.toast.emit(f"Restored defaults for {config.SECTIONS[section].split('·')[-1].strip().lower()}", "info")
+
+    # ── genre presets ─────────────────────────────────────────────────────
+    genrePresets = Property("QVariantList", lambda s: [
+        {"id": p.id, "name": p.name, "tagline": p.tagline, "icon": p.icon, "details": p.details}
+        for p in presets.PRESETS], constant=True)
+
+    def _get_active_preset(self) -> str:
+        preset = presets.match(self._store.values())
+        return preset.id if preset else ""
+
+    activePreset = Property(str, _get_active_preset, notify=revisionChanged)
+
+    @Slot(str)
+    def applyPreset(self, preset_id: str) -> None:
+        preset = presets.BY_ID.get(preset_id)
+        if preset is None:
+            return
+        self._store.update(preset.values)
+        self.toast.emit(f"{preset.name} preset applied", "info")
 
     # ── environment info ──────────────────────────────────────────────────
     def _get_accent(self) -> str:

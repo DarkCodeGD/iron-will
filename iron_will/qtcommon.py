@@ -92,6 +92,26 @@ class ConfigStore(QObject):
         self._schedule_save()
         return True
 
+    def update(self, changes: dict[str, Any]) -> set[str]:
+        """Apply several settings at once with a single ``changed`` signal —
+        e.g. a genre preset touching 8 keys restarts cava once, not 8 times."""
+        changed: set[str] = set()
+        for key, value in changes.items():
+            field = config.FIELD_MAP.get(key)
+            if field is None:
+                continue
+            try:
+                new = field.coerce(value)
+            except (ValueError, TypeError):
+                continue
+            if new != self._values[key]:
+                self._values[key] = new
+                changed.add(key)
+        if changed:
+            self.changed.emit(changed)
+            self._schedule_save()
+        return changed
+
     def reset(self, keys: Iterable[str]) -> None:
         defaults = config.defaults()
         changed = {k for k in keys if self._values.get(k) != defaults[k]}

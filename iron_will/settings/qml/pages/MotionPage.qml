@@ -5,12 +5,14 @@ import "../components"
 PageScaffold {
     id: page
     title: "Motion"
-    subtitle: "Physics, idle behaviour and audio analysis. Tune the feel of every bounce."
+    subtitle: "Pick a genre preset, or fine-tune the physics and audio analysis yourself."
     resetSections: ["motion", "analysis"]
 
     readonly property int rev: backend.revision
 
     PreviewCard {}
+
+    GenrePresets {}
 
     Card {
         title: "Physics"

@@ -23,7 +23,7 @@ from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPat
 from PySide6.QtQml import qmlRegisterType
 from PySide6.QtQuick import QQuickPaintedItem
 
-from .. import config
+from .. import config, presets
 from .demo import DemoSignal
 from .physics import BarPhysics
 
@@ -113,6 +113,7 @@ class VisualizerItem(QQuickPaintedItem):
         self._physics.configure(c["motion.attack_ms"], c["motion.decay_ms"],
                                 c["motion.peak_hold_ms"], c["motion.peak_gravity"])
         self._physics.resize(config.cava_bar_count(c))
+        self._demo_signal.style = presets.demo_style_for(c)
         self._timer.setInterval(max(1, round(1000 / c["visualizer.fps"])))
         self._brush_key = None
         self._wake()

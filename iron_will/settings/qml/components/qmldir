@@ -14,3 +14,4 @@ PageScaffold 1.0 PageScaffold.qml
 Chip 1.0 Chip.qml
 Divider 1.0 Divider.qml
 Toast 1.0 Toast.qml
+GenrePresets 1.0 GenrePresets.qml

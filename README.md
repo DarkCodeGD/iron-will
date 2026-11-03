@@ -23,6 +23,7 @@
 
 - **Session sounds:** plays a random track from your library on **login**, **resume from suspend**, and **screen unlock**.
 - **Desktop visualizer:** a click-through spectrum visualizer on the desktop layer, sitting right above your panel. It never steals focus and never covers windows.
+- **Genre presets:** one tap retunes the bounce physics and frequency range for metal, phonk, electronic, hip-hop, calm and more.
 - **Settings app:** a GUI for every setting. Changes auto-save, and the visualizer **updates live** as you drag sliders.
 
 ## On the desktop
@@ -39,6 +40,22 @@ Three render modes, all anchored right above the Plasma panel and click-through:
 | **Wave** · smooth curve with a custom gradient | <img src="docs/images/desktop-wave.jpg" alt="Wave mode"> |
 | **Mirror** · bass in the middle, with falling peak caps | <img src="docs/images/desktop-mirror.jpg" alt="Mirror mode"> |
 
+## Genre presets
+
+Different music needs different physics. Fast double-bass drumming needs bars that fall quickly so each hit stays visible. A phonk 808 should boom and hang. Ambient music should float. Pick a preset on the **Motion** page; it changes only the *feel* (attack, decay, peaks and analysed frequency range), never your colors or layout. Change any slider afterwards and the preset shows as **Custom**. The live preview plays a matching demo groove for each preset.
+
+| Preset | Attack / Decay | Frequency range | Tuned for |
+|---|---|---|---|
+| **Balanced** | 35 / 220 ms | 50 Hz – 12 kHz | any playlist |
+| **Metal & Rock** | 8 / 110 ms | 40 Hz – 16 kHz | fast drums, double bass, cymbals and riffs |
+| **Phonk & Bass** | 15 / 320 ms | 25 Hz – 6 kHz | heavy, sustained 808s, with extra bars for the low end |
+| **Electronic** | 18 / 200 ms | 35 Hz – 14 kHz | four-on-the-floor kicks and crisp hi-hats |
+| **Hip-Hop & R&B** | 25 / 260 ms | 30 Hz – 9 kHz | kick and snare, sub-bass, vocal mids |
+| **Calm & Ambient** | 90 / 650 ms | 50 Hz – 10 kHz | lo-fi, ambient, classical |
+| **Jazz & Acoustic** | 40 / 380 ms | 60 Hz – 14 kHz | natural instruments, soft dynamics |
+
+Presets live in [`iron_will/presets.py`](iron_will/presets.py). Each one is a single line of values, so adding your own genre is easy.
+
 ## Settings app
 
 Flat, pill-shaped controls in a dark slate theme with two complementary accents: teal for the visualizer, coral for session sounds. The live preview uses the same renderer as the desktop.
@@ -49,7 +66,7 @@ Flat, pill-shaped controls in a dark slate theme with two complementary accents:
     <td width="50%"><img src="docs/images/gui-layout.png" alt="Layout page"><br><sub><b>Layout:</b> a placement diagram plus edge, alignment, size, offsets and layer</sub></td>
   </tr>
   <tr>
-    <td><img src="docs/images/gui-motion.png" alt="Motion page"><br><sub><b>Motion:</b> attack/decay physics, peak gravity, idle fade, cava analysis</sub></td>
+    <td><img src="docs/images/gui-motion.png" alt="Motion page"><br><sub><b>Motion:</b> genre presets, attack/decay physics, peak gravity, idle fade, cava analysis</sub></td>
     <td><img src="docs/images/gui-sounds.png" alt="Session Sounds page"><br><sub><b>Session Sounds:</b> library, trigger events with delays, volume, cooldown</sub></td>
   </tr>
   <tr>
@@ -131,7 +148,7 @@ Key design decisions:
 
 ```
 iron_will/
-  config.py  paths.py  accent.py  util.py  qtcommon.py
+  config.py  presets.py  paths.py  accent.py  util.py  qtcommon.py
   dispatcher/   player.py  daemon.py  chime.py
   visualizer/   cava.py  physics.py  demo.py  renderer.py  layout.py  app.py  qml/
   settings/     backend.py  app.py  qml/{Main.qml, components/, pages/}
