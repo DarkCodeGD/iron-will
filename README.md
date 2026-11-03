@@ -33,7 +33,7 @@
   <img src="docs/images/desktop.jpg" alt="Iron Will visualizer running on a KDE Plasma 6 desktop, sitting just above the panel">
 </p>
 
-Five render modes, all anchored right above the Plasma panel and click-through:
+Six render modes, all anchored right above the Plasma panel and click-through:
 
 | | |
 |---|---|
@@ -42,6 +42,7 @@ Five render modes, all anchored right above the Plasma panel and click-through:
 | **Mirror** · bass in the middle, with falling peak caps | <img src="docs/images/desktop-mirror.jpg" alt="Mirror mode"> |
 | **Fire** · GPU flames that surge on every kick (see [Fire mode](#fire-mode)) | <img src="docs/images/desktop-fire.jpg" alt="Fire mode"> |
 | **Ferrofluid** · glossy black magnetic liquid the bass pulls into spikes (see [Ferrofluid mode](#ferrofluid-mode)) | <img src="docs/images/desktop-ferro.jpg" alt="Ferrofluid mode"> |
+| **Bubbles** · rainbow soap bubbles that float up, wobble and pop to the beat (see [Bubbles mode](#bubbles-mode)) | <img src="docs/images/desktop-bubbles.jpg" alt="Bubbles mode"> |
 
 ## Fire mode
 
@@ -88,6 +89,25 @@ The liquid has mass and surface tension: spikes ride under-damped springs, so th
 - **Rim & backlight:** a rim light in your colors outlines the silhouette, and a glow behind the spikes flashes on kicks, so black liquid stays visible on a dark wallpaper. *Your colors* takes the rim from your first gradient color and the backlight from your last (the **Ascend** gradient gives a crimson backlight), and *Chrome* uses a cool steel rim and a white backlight.
 - **Shape:** **Sharpness** goes from soft cones to needles, **Spike count** from a few big spikes to a dense forest, **Wobble** from stiff to jelly, and **Reaction** from slow and heavy to snappy.
 - **Height:** like fire, it needs room (220–300 px), and it works hanging down from the top edge and with **Full screen height**.
+- **No GPU?** On a software-rendered desktop, it falls back to bars.
+
+## Bubbles mode
+
+Soap bubbles drifting up from the bottom of the screen: the cute one. 🫧 Unlike fire and ferrofluid, every bubble is its own little object with a size, an age and a fate, so a small simulation in Python moves them and a GPU shader draws them.
+
+| In the mix | In the bubbles |
+|---|---|
+| **Kick drum, bass** | *blow*: a big bubble or two, and every bubble on screen squishes and jiggles like jelly |
+| **Rhythm guitars, vocals** | the *stream*: a steady flow of bubbles, born where the music is |
+| **Snare, cymbals** | *pops*, and a fizz of tiny background bubbles |
+
+Bubbles rise faster the bigger they are, sway as they go, nudge each other aside instead of stacking up, and pop when they reach the top, get old, or a snare hit picks them.
+
+- **Real soap film:** the swirling rainbow on a bubble is thin-film interference, so its color follows the film's thickness, which swirls, drains toward the bottom, and looks thicker toward the rim. The middle stays clear, and the rim catches the light. Bubbles are mostly see-through and show up on dark and bright wallpapers alike.
+- **Colors:** *Rainbow* (real soap film), *Pastel* (pink, lavender, mint, baby blue), or *Your colors* (your first and last gradient colors around each rim). **Rainbow sheen** fades the film down to clear glass.
+- **Pops:** the film tears and snaps back, droplets spray out, and a little ✦ sparkle or a 💕 heart twinkles where the bubble was (**When they pop**). **Pops** sets how eagerly the snare pops them.
+- **Feel:** **Bubbles** (a few … bubble bath), **Size**, **Float speed**, **Wobble** (firm … jelly) and **Fizz**.
+- **Height:** they float through the whole visualizer, so give it some room (220–300 px) or turn on **Full screen height**. Hanging down from the top edge, they sink instead.
 - **No GPU?** On a software-rendered desktop, it falls back to bars.
 
 ## Genre presets
@@ -228,12 +248,12 @@ Key design decisions:
 iron_will/
   config.py  presets.py  paths.py  accent.py  util.py  qtcommon.py
   dispatcher/   player.py  daemon.py  notify.py  chime.py
-  visualizer/   modes.py  dynamics.py  fire.py  ferro.py  cava.py  physics.py  demo.py  renderer.py  layout.py
+  visualizer/   modes.py  dynamics.py  fire.py  ferro.py  bubbles.py  cava.py  physics.py  demo.py  renderer.py  layout.py
                 guardian.py  lockwatch.py  app.py
                 qml/{Visualizer.qml, WaylandWindow.qml, X11Window.qml}
-                shaders/{fire.frag, ferro.frag, *.frag.qsb, build.sh}
+                shaders/{fire.frag, ferro.frag, bubbles.frag, *.frag.qsb, build.sh}
   settings/     backend.py  icons.py  app.py  qml/{Main.qml, components/, pages/}
-  assets/iron-will.svg  assets/modes/{bars, mirror, wave, fire, ferro}.svg
+  assets/iron-will.svg  assets/modes/{bars, mirror, wave, fire, ferro, bubbles}.svg
 systemd/  desktop/  config/config.example.toml  install.sh  uninstall.sh
 ```
 
@@ -246,10 +266,12 @@ A GPU mode needs two more pieces, and nothing in the renderer or QML changes:
 1. **An analyzer** (Qt-free Python, registered in `GPU_ANALYZERS` in `renderer.py`) that turns spectrum frames into control signals. The hit detectors, springs and band helpers in `dynamics.py` are shared. It provides `apply(cfg, colors)`, `step(raw, dt)`, `reset()` and `settled()`, plus `columns` (16 values), `motion()` and `extra()` (4 values each, per frame), and `look`, `palette` (3 colors) and `param` (style).
 2. **A fragment shader** in `shaders/` (compile it with `build.sh`) that reads those through the generic uniform block: `colsA–D`, `motion`, `extra`, `look` (with the aspect ratio in `w`), `res` (size in pixels), `colorA–C` and `param`. Each shader gives the slots its own meaning; see `fire.frag` and `ferro.frag`. Keep it float-only: the GLSL ES 1.00 / 1.20 variants have no integer `clamp`/`min`/`max`.
 
+A mode made of separate objects (like bubbles) also gives its analyzer `particles()`, up to 24 `(x, y, size, state)` tuples per frame, and `resize(w, h)` if it simulates in pixels. The shader receives them as the uniforms `p0` … `p23` (an empty slot is all zeros); see `bubbles.py` and `bubbles.frag`.
+
 ## Troubleshooting
 
 - **No bars?** Check `cava` is installed (System page), then look at `$XDG_RUNTIME_DIR/iron-will/cava.log`.
-- **Fire or ferrofluid shows bars?** The desktop is rendering in software (no GPU shaders). The visualizer log says *"no GPU shaders"*.
+- **Fire, ferrofluid or bubbles shows bars?** The desktop is rendering in software (no GPU shaders). The visualizer log says *"no GPU shaders"*.
 - **Visualizer is a normal window on Wayland?** The LayerShellQt QML module is missing. Install `layer-shell-qt`.
 - **Two login sounds?** Turn off Plasma's own login sound in System Settings → Notifications → Plasma Workspace.
 - **No sound after resume?** Raise *Resume delay* in Session Sounds. The daemon also waits up to 10 s for the audio device.

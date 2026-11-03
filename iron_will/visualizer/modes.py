@@ -40,6 +40,9 @@ MODES: tuple[RenderMode, ...] = (
     RenderMode("ferro", "Ferrofluid",
                "Glossy black magnetic liquid: the bass pulls it up into spikes that wobble back down",
                "ferro.svg", noun="spikes", shader="ferro.frag.qsb"),
+    RenderMode("bubbles", "Bubbles",
+               "Rainbow soap bubbles: kicks blow big ones, guitars keep them coming, snares pop them",
+               "bubbles.svg", noun="bubbles", shader="bubbles.frag.qsb"),
 )
 
 MODE_IDS: tuple[str, ...] = tuple(m.id for m in MODES)

@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Shapes
 
 // Vector icon drawn from SVG path data (24×24 grid, Material Symbols, Apache-2.0;
-// "magnet" is our own). Paths use even-odd fill (ShapePath's default).
+// "magnet" and "bubbles" are our own). Paths use even-odd fill (ShapePath's default).
 // Using Shape + PathSvg keeps icons crisp at any size and recolorable by binding.
 Item {
     id: icon
@@ -32,6 +32,7 @@ Item {
         "bolt":   "M7 2v11h3v9l7-12h-4l4-8z",
         "speaker":"M17 2H7c-1.1 0-2 .9-2 2v16c0 1.1.9 1.99 2 1.99L17 22c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-5 2c1.1 0 2 .9 2 2s-.9 2-2 2c-1.11 0-2-.9-2-2s.89-2 2-2zm0 16c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z",
         "magnet": "M5 3h5v9a2 2 0 0 0 4 0V3h5v9a7 7 0 0 1-14 0V3zm0 2.5v2h5v-2H5zm9 0v2h5v-2h-5z",
+        "bubbles": "M3 14a6 6 0 1 0 12 0a6 6 0 1 0-12 0zm1.5 0a4.5 4.5 0 1 0 9 0a4.5 4.5 0 1 0-9 0zM6 12a1 1 0 1 0 2 0a1 1 0 1 0-2 0zM13.5 7a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0zm1.3 0a2.2 2.2 0 1 0 4.4 0a2.2 2.2 0 1 0-4.4 0zM17 17.5a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0-3 0z",
         "flame": "M13.5.67s.74 2.65.74 4.8c0 2.06-1.35 3.73-3.41 3.73-2.07 0-3.63-1.67-3.63-3.73l.03-.36C5.21 7.51 4 10.62 4 14c0 4.42 3.58 8 8 8s8-3.58 8-8C20 8.61 17.41 3.8 13.5.67zM11.71 19c-1.78 0-3.22-1.4-3.22-3.14 0-1.62 1.05-2.76 2.81-3.12 1.77-.36 3.6-1.21 4.62-2.58.39 1.29.59 2.65.59 4.04 0 2.65-2.15 4.8-4.8 4.8z",
         "equalizer": "M7 18h2V6H7v12zm4 4h2V2h-2v20zm-8-8h2v-4H3v4zm12 4h2V6h-2v12zm4-8v4h2v-4h-2z",
         "mic":    "M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z",

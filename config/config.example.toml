@@ -4,7 +4,7 @@
 
 # ── Visualizer · look ───────────────────────────────────────────
 [visualizer]
-# Render style — bars | mirror | wave | fire | ferro
+# Render style — bars | mirror | wave | fire | ferro | bubbles
 mode = "bars"
 # Number of bars / wave points — 8 … 256
 bar_count = 64
@@ -81,6 +81,27 @@ rim = 0.7
 gloss = 0.8
 # Rim light colors: your gradient colors, or neutral chrome — colors | chrome
 palette = "colors"
+
+# ── Visualizer · bubbles mode ───────────────────────────────────
+[bubbles]
+# How many bubbles float at once, and how fast new ones are blown — 0 … 1
+amount = 0.6
+# Bubble size: 0 = tiny, 1 = big and round — 0 … 1
+size = 0.5
+# How fast the bubbles rise (the music speeds them up further) — 0.3 … 2.5
+float_speed = 1.0
+# How much the bubbles squish and jiggle on each kick: 0 = firm, 1 = jelly — 0 … 1
+wobble = 0.6
+# How eagerly snare and cymbal hits pop bubbles (0 = they only pop at the top) — 0 … 1
+pops = 0.6
+# Rainbow soap-film shimmer on each bubble (0 = clear glass) — 0 … 1
+sheen = 0.8
+# Tiny background bubbles that fizz up with the cymbals (0 = none) — 0 … 1
+fizz = 0.5
+# Bubble colors: rainbow soap film, soft pastels, or your gradient colors — iridescent | pastel | colors
+palette = "iridescent"
+# What a popping bubble leaves behind: little sparkles or hearts — sparkles | hearts
+pop_shape = "sparkles"
 
 # ── Visualizer · placement on screen ────────────────────────────
 [layout]

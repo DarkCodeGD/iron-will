@@ -26,6 +26,9 @@ through one generic set of properties the shader binds to (``gpu*``):
     gpuLook      analyzer.look       (QML adds the aspect ratio as w)
     gpuColorA–C  analyzer.palette
     gpuParam     analyzer.param
+    gpuParticles analyzer.particles() — object modes only (bubbles): up to
+                 PARTICLE_SLOTS vec4s, flattened; QML unpacks them into
+                 uniforms p0…p23. Empty slots are zeros.
 
 Each shader gives those slots its own meaning (documented in the shader and
 the analyzer). In a GPU mode the item skips ``update()`` entirely, so no CPU
@@ -47,6 +50,7 @@ from PySide6.QtQuick import QQuickPaintedItem
 
 from .. import config, presets
 from .demo import DemoSignal
+from .bubbles import PARTICLE_SLOTS, BubbleAnalyzer
 from .ferro import FerroAnalyzer
 from .fire import FireAnalyzer
 from .modes import BY_ID
@@ -60,7 +64,8 @@ SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 log = logging.getLogger("iron_will.visualizer")
 
 # GPU mode id → analyzer class (each follows the contract in fire.py / ferro.py).
-GPU_ANALYZERS = {"fire": FireAnalyzer, "ferro": FerroAnalyzer}
+GPU_ANALYZERS = {"fire": FireAnalyzer, "ferro": FerroAnalyzer, "bubbles": BubbleAnalyzer}
+_NO_PARTICLES = [0.0] * (4 * PARTICLE_SLOTS)
 
 
 def _mirror(values: list[float], total: int) -> list[float]:
@@ -78,6 +83,7 @@ class VisualizerItem(QQuickPaintedItem):
     demoChanged = Signal()
     gpuStyleChanged = Signal()    # config-driven shader values (rare)
     gpuFrame = Signal()           # per-frame shader values (every tick in a GPU mode)
+    gpuParticlesChanged = Signal()  # per frame, only in modes with particles
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -90,6 +96,7 @@ class VisualizerItem(QQuickPaintedItem):
         self._analyzers: dict = {}    # GPU mode id → analyzer, created on first use
         self._gpu = None              # the current mode's analyzer (None for CPU modes)
         self._gpu_fallback = False
+        self._particle_flat = list(_NO_PARTICLES)
         self._cfg = config.defaults()
         self._colors: list[str] = list(self._cfg["visualizer.colors"])
         self._targets: list[float] = []
@@ -179,6 +186,18 @@ class VisualizerItem(QQuickPaintedItem):
     gpuExtra = Property(QVector4D, lambda self: self._frame("extra"), notify=gpuFrame)
     gpuOpacity = Property(float, lambda self: self._cfg["visualizer.opacity"] * self._fade, notify=gpuFrame)
 
+    def _particles(self) -> list:
+        return self._particle_flat
+
+    # One flat list per frame (one Python call from QML, not one per slot).
+    gpuParticles = Property("QVariantList", _particles, notify=gpuParticlesChanged)
+
+    def _publish_particles(self) -> None:
+        """Flatten the analyzer's particle slots, padded with empty ones."""
+        flat = [v for slot in self._gpu.particles() for v in slot]
+        self._particle_flat = flat + _NO_PARTICLES[len(flat):]
+        self.gpuParticlesChanged.emit()
+
     # ── data input ────────────────────────────────────────────────────────
     @Slot(list)
     def feed(self, values: list) -> None:
@@ -201,7 +220,9 @@ class VisualizerItem(QQuickPaintedItem):
         self._targets = []
         self._fade = 0.0
         self._last_loud = float("-inf")
+        self._particle_flat = list(_NO_PARTICLES)
         self.update()
+        self.gpuParticlesChanged.emit()
         self.gpuFrame.emit()
 
     # ── config ────────────────────────────────────────────────────────────
@@ -257,6 +278,8 @@ class VisualizerItem(QQuickPaintedItem):
         self._physics.step(self._targets, dt)
         gpu = self._is_gpu()
         if gpu:
+            if hasattr(self._gpu, "resize"):   # object modes simulate in pixels
+                self._gpu.resize(self.width(), self.height())
             self._gpu.step(self._targets, dt)  # each GPU mode has its own dynamics
 
         silent_for = now - self._last_loud
@@ -267,6 +290,8 @@ class VisualizerItem(QQuickPaintedItem):
             self._fade = goal
 
         if gpu:
+            if hasattr(self._gpu, "particles"):
+                self._publish_particles()
             self.gpuFrame.emit()  # the shader redraws; nothing to paint here
             # GPU modes keep moving through silence (fire's pilot light, the
             # liquid's ripples) until the idle fade has taken them out.

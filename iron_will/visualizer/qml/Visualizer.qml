@@ -45,5 +45,39 @@ Item {
         property color colorB: vis.gpuColorB
         property color colorC: vis.gpuColorC
         property real param: vis.gpuParam
+
+        // Particle slots for object modes (bubbles): ShaderEffect can't take
+        // arrays, so 24 vec4 uniforms. Shaders that don't declare them ignore
+        // them, and they only change in modes that have particles.
+        readonly property var parts: vis.gpuParticles
+        function slot(i) {
+            var k = 4 * i
+            return parts.length > k + 3 ? Qt.vector4d(parts[k], parts[k + 1], parts[k + 2], parts[k + 3])
+                                        : Qt.vector4d(0, 0, 0, 0)
+        }
+        property vector4d p0: slot(0)
+        property vector4d p1: slot(1)
+        property vector4d p2: slot(2)
+        property vector4d p3: slot(3)
+        property vector4d p4: slot(4)
+        property vector4d p5: slot(5)
+        property vector4d p6: slot(6)
+        property vector4d p7: slot(7)
+        property vector4d p8: slot(8)
+        property vector4d p9: slot(9)
+        property vector4d p10: slot(10)
+        property vector4d p11: slot(11)
+        property vector4d p12: slot(12)
+        property vector4d p13: slot(13)
+        property vector4d p14: slot(14)
+        property vector4d p15: slot(15)
+        property vector4d p16: slot(16)
+        property vector4d p17: slot(17)
+        property vector4d p18: slot(18)
+        property vector4d p19: slot(19)
+        property vector4d p20: slot(20)
+        property vector4d p21: slot(21)
+        property vector4d p22: slot(22)
+        property vector4d p23: slot(23)
     }
 }

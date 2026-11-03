@@ -6,18 +6,20 @@ PageScaffold {
     id: page
     title: "Appearance"
     subtitle: "Style and colors of the desktop visualizer. Changes apply live to your desktop."
-    resetSections: ["visualizer", "fire", "ferro"]
+    resetSections: ["visualizer", "fire", "ferro", "bubbles"]
 
     readonly property int rev: backend.revision
     readonly property string mode: { rev; return backend.get("visualizer.mode") }
     readonly property bool accentMode: { rev; return backend.get("visualizer.color_source") === "accent" }
     readonly property bool fire: mode === "fire"
     readonly property bool ferro: mode === "ferro"
-    readonly property bool gpu: fire || ferro      // drawn by a shader: bar-shape controls don't apply
+    readonly property bool bubbles: mode === "bubbles"
+    readonly property bool gpu: fire || ferro || bubbles   // drawn by a shader: bar-shape controls don't apply
     readonly property bool bars: mode === "bars" || mode === "mirror"
     readonly property bool fullHeight: { rev; return backend.get("layout.full_height") }
     readonly property bool naturalFire: { rev; return backend.get("fire.palette") === "natural" }
     readonly property bool chromeFerro: { rev; return backend.get("ferro.palette") === "chrome" }
+    readonly property string bubblePalette: { rev; return backend.get("bubbles.palette") }
 
     PreviewCard {}
 
@@ -169,10 +171,70 @@ PageScaffold {
     }
 
     Card {
+        title: "Bubbles"
+        subtitle: "How the bubbles float, wobble and pop"
+        iconName: "bubbles"
+        visible: page.bubbles
+
+        HeightHint { what: "Bubbles"; icon: "bubbles" }
+
+        SegmentedRow {
+            key: "bubbles.palette"; label: "Bubble colors"
+            description: page.bubblePalette === "iridescent" ? "The swirling rainbow of real soap film"
+                       : page.bubblePalette === "pastel" ? "Soft candy pastels: pink, lavender, mint and baby blue"
+                       : "Your gradient colors, shimmering around each rim"
+            labels: ({ iridescent: "Rainbow", pastel: "Pastel", colors: "Your colors" })
+        }
+        SegmentedRow {
+            key: "bubbles.pop_shape"; label: "When they pop"
+            description: "What a bubble leaves behind when it bursts"
+            labels: ({ sparkles: "Sparkles", hearts: "Hearts" })
+        }
+        Divider {}
+        SliderRow {
+            key: "bubbles.amount"; label: "Bubbles"; decimals: 2
+            description: "How many bubbles float at once, and how fast the music blows new ones"
+            format: function (v) { return v < 0.3 ? "A few" : v < 0.7 ? "Plenty" : "Bubble bath" }
+        }
+        SliderRow {
+            key: "bubbles.size"; label: "Size"; decimals: 2
+            description: "From tiny bubbles to big round ones (kicks always blow the biggest)"
+            format: function (v) { return v < 0.3 ? "Tiny" : v < 0.7 ? "Medium" : "Big" }
+        }
+        SliderRow {
+            key: "bubbles.float_speed"; label: "Float speed"; decimals: 2
+            description: "How fast they drift up. Busy music speeds them up further."
+            format: function (v) { return v.toFixed(1) + "×" }
+        }
+        SliderRow {
+            key: "bubbles.wobble"; label: "Wobble"; decimals: 2
+            description: "How much every bubble squishes and jiggles on a kick"
+            format: function (v) { return v < 0.25 ? "Firm" : v < 0.75 ? "Bouncy" : "Jelly" }
+        }
+        SliderRow {
+            key: "bubbles.pops"; label: "Pops"; decimals: 2
+            description: "How eagerly snare and cymbal hits pop bubbles. At 0 they only pop when they reach the top."
+            format: function (v) { return v < 0.005 ? "Only at the top" : Math.round(v * 100) + "%" }
+        }
+        SliderRow {
+            key: "bubbles.sheen"; label: "Rainbow sheen"; decimals: 2
+            description: "The shimmering soap film on each bubble. At 0 they look like clear glass."
+            format: function (v) { return v < 0.005 ? "Clear" : Math.round(v * 100) + "%" }
+        }
+        SliderRow {
+            key: "bubbles.fizz"; label: "Fizz"; decimals: 2
+            description: "Tiny background bubbles that fizz up with the cymbals"
+            format: function (v) { return v < 0.005 ? "Off" : Math.round(v * 100) + "%" }
+        }
+    }
+
+    Card {
         title: "Color"
         subtitle: page.fire && page.naturalFire ? "Natural fire uses its own colors. Pick \u201cYour colors\u201d in the Fire card to use these."
                 : page.ferro && page.chromeFerro ? "Chrome uses its own colors. Pick \u201cYour colors\u201d in the Ferrofluid card to use these."
                 : page.ferro ? "Ferrofluid lights the black liquid with these: rim from the first color, backlight from the last"
+                : page.bubbles && page.bubblePalette !== "colors" ? "Bubbles use their own soap-film colors. Pick \u201cYour colors\u201d in the Bubbles card to use these."
+                : page.bubbles ? "Bubbles shimmer between your first and last color around each rim"
                 : "Follow your Plasma accent, or build your own gradient"
         iconName: "palette"
 
