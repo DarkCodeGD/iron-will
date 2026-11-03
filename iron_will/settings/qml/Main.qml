@@ -43,23 +43,12 @@ ApplicationWindow {
                     Layout.leftMargin: 6
                     Layout.bottomMargin: 22
                     spacing: 12
-                    Rectangle {   // app mark: flat bars, teal with one coral
-                        implicitWidth: 40; implicitHeight: 40; radius: 14
-                        color: Theme.surfaceHi
-                        Row {
-                            anchors.centerIn: parent
-                            spacing: 3
-                            Repeater {
-                                model: [10, 18, 24, 15, 20]
-                                Rectangle {
-                                    required property int modelData
-                                    required property int index
-                                    anchors.bottom: parent.bottom
-                                    width: 4; height: modelData; radius: 2
-                                    color: index === 2 ? Theme.secondary : Theme.primary
-                                }
-                            }
-                        }
+                    Image {       // the app logo (same SVG as the app menu and notifications)
+                        source: Qt.resolvedUrl("../../assets/iron-will.svg")
+                        Layout.preferredWidth: 42; Layout.preferredHeight: 42
+                        sourceSize: Qt.size(84, 84)      // 2× for crisp HiDPI rendering
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true; mipmap: true
                     }
                     ColumnLayout {
                         spacing: 1

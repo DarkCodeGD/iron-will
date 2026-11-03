@@ -1,9 +1,37 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
-  <!-- Flat app mark: slate tile, pill bars in teal with one complementary coral bar. -->
-  <rect x="4" y="4" width="120" height="120" rx="34" fill="#18212A"/>
-  <rect x="26" y="62" width="12" height="36" rx="6" fill="#2EC4B6"/>
-  <rect x="44" y="44" width="12" height="54" rx="6" fill="#2EC4B6"/>
-  <rect x="62" y="30" width="12" height="68" rx="6" fill="#FF6B5B"/>
-  <rect x="80" y="50" width="12" height="48" rx="6" fill="#2EC4B6"/>
-  <rect x="98" y="66" width="12" height="32" rx="6" fill="#2EC4B6" opacity="0.6"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!--
+    Iron Will · "Ascend"
+    A bold W whose last stroke breaks out as a rising arrow, with three
+    equalizer bars at its heart. Plain SVG (paths, rects, linear gradients,
+    no filters), so QtSvg, Plasma, browsers and GitHub all render it the same.
+  -->
+  <defs>
+    <!-- fire: orange (bottom-left) to red (top-right), along the W and arrow -->
+    <linearGradient id="iw-fire" gradientUnits="userSpaceOnUse" x1="110" y1="400" x2="420" y2="110">
+      <stop offset="0" stop-color="#FF9A1F"/>
+      <stop offset="1" stop-color="#E8262E"/>
+    </linearGradient>
+    <!-- the centre bar: red at its foot, orange at its tip -->
+    <linearGradient id="iw-fire-v" gradientUnits="userSpaceOnUse" x1="0" y1="400" x2="0" y2="110">
+      <stop offset="0" stop-color="#E8262E"/>
+      <stop offset="1" stop-color="#FF9A1F"/>
+    </linearGradient>
+  </defs>
+
+  <!-- tile -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="#1E242B"/>
+
+  <!-- the W; its last stroke continues up and right into the arrow shaft -->
+  <path d="M92,120 L172,384 L244,252 L316,384 L384,186" fill="none"
+        stroke="url(#iw-fire)" stroke-width="48" stroke-linejoin="miter" stroke-miterlimit="6"/>
+  <!-- flat horizontal cut on the first stroke (tile-coloured; sits fully inside the tile) -->
+  <rect x="56" y="100" width="88" height="64" fill="#1E242B"/>
+
+  <!-- arrowhead: barbs swept back along the shaft; the notch tucks behind the shaft end -->
+  <path d="M440.2,237.8 L415.2,95.2 L307.8,192.3 L380.8,195.5 Z" fill="url(#iw-fire)"/>
+
+  <!-- equalizer bars: two cream bars in the W's notches, the tallest above its peak -->
+  <rect x="188" y="154" width="30" height="114" rx="15" fill="#F3EEE6"/>
+  <rect x="229" y="96" width="30" height="82" rx="15" fill="url(#iw-fire-v)"/>
+  <rect x="270" y="154" width="30" height="114" rx="15" fill="#F3EEE6"/>
 </svg>
