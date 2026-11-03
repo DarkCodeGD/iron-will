@@ -36,8 +36,8 @@ PageScaffold {
                             Chip {
                                 filled: true
                                 accent: !modelData.installed ? Theme.textMuted
-                                      : modelData.active ? Theme.primary
-                                      : modelData.state === "failed" ? Theme.secondary : Theme.textMuted
+                                      : modelData.active ? Theme.success
+                                      : modelData.state === "failed" ? Theme.danger : Theme.textMuted
                                 text: !modelData.installed ? "Not installed"
                                     : modelData.active ? "Running"
                                     : modelData.state === "failed" ? "Failed" : "Stopped"
@@ -86,11 +86,11 @@ PageScaffold {
                         spacing: 12
                         Rectangle {
                             implicitWidth: 34; implicitHeight: 34; radius: 17
-                            color: Theme.tint(modelData.ok ? Theme.primary : Theme.secondary, 0.16)
+                            color: Theme.tint(modelData.ok ? Theme.success : Theme.danger, 0.16)
                             Icon {
                                 anchors.centerIn: parent
                                 name: modelData.ok ? "check" : "close"; size: 18
-                                color: modelData.ok ? Theme.primary : Theme.secondary
+                                color: modelData.ok ? Theme.success : Theme.danger
                             }
                         }
                         ColumnLayout {
@@ -99,7 +99,7 @@ PageScaffold {
                             Text { text: modelData.name; color: Theme.text; font.pixelSize: 13; font.weight: Font.DemiBold }
                             Text {
                                 text: modelData.ok ? modelData.detail : "Missing — install " + modelData.package
-                                color: modelData.ok ? Theme.textMuted : Theme.secondary
+                                color: modelData.ok ? Theme.textMuted : Theme.danger
                                 font.pixelSize: Theme.fontCaption
                                 elide: Text.ElideRight
                                 Layout.fillWidth: true

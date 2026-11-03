@@ -5,7 +5,7 @@ Rectangle {
     id: toast
     property string message
     property string kind: "info"     // "info" | "error"
-    readonly property color accent: kind === "error" ? Theme.secondary : Theme.primary
+    readonly property color accent: kind === "error" ? Theme.danger : Theme.primary
 
     function show(msg, k) { message = msg; kind = k || "info"; shown = true; hideTimer.restart() }
     property bool shown: false

@@ -13,6 +13,7 @@ ColumnLayout {
     readonly property int maxStops: 6
 
     readonly property var presets: [
+        { name: "Ascend",     colors: ["#FF9A1F", "#E8262E"] },   // the logo's fire
         { name: "Aurora",     colors: ["#2EC4B6", "#3A86FF", "#8338EC"] },
         { name: "Reef",       colors: ["#2EC4B6", "#FF6B5B"] },
         { name: "Ember",      colors: ["#FFBE0B", "#FB5607", "#FF006E"] },
@@ -109,7 +110,7 @@ ColumnLayout {
             text: "Add stop"
             onClicked: {
                 var c = editor.colors.slice()
-                c.push(c.length ? c[c.length - 1] : "#2EC4B6")
+                c.push(c.length ? c[c.length - 1] : "#FF9A1F")
                 editor.commit(c)
                 dialog.editIndex = c.length - 1
                 dialog.selectedColor = c[c.length - 1]

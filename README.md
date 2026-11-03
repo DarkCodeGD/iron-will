@@ -82,7 +82,7 @@ Without a lock screen, the resume sound plays after *Resume delay* as usual. A p
 
 ## Settings app
 
-Flat, pill-shaped controls in a dark slate theme with two complementary accents: teal for the visualizer, coral for session sounds. The live preview uses the same renderer as the desktop.
+Flat, pill-shaped controls in a dark slate theme with the logo's fire palette: orange for the visualizer, crimson-rose for session sounds, mint for "all good". Soft tints lean toward wine instead of fading orange into brown. The live preview uses the same renderer as the desktop.
 
 <table>
   <tr>

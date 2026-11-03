@@ -100,7 +100,7 @@ ApplicationWindow {
                         Rectangle {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 8; height: 8; radius: 4
-                            color: backend.dirty ? Theme.secondary : Theme.primary
+                            color: backend.dirty ? Theme.danger : Theme.success
                             Behavior on color { ColorAnimation { duration: 200 } }
                         }
                         Text {
