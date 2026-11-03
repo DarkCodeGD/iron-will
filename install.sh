@@ -138,6 +138,8 @@ render "$SRC/desktop/iron-will-settings.desktop" "$APPS_DIR/iron-will-settings.d
 run mkdir -p "$ICON_DIR"
 run cp "$SRC/iron_will/assets/iron-will.svg" "$ICON_DIR/iron-will.svg"
 command -v update-desktop-database >/dev/null && run update-desktop-database -q "$APPS_DIR" || true
+# Refresh KDE's menu cache so Plasma picks up the entry (and its icon) right away.
+command -v kbuildsycoca6 >/dev/null && run kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
 ok "app launcher → Iron Will (application menu)"
 
 # ── 3. config + sound folder ───────────────────────────────────────────────

@@ -18,6 +18,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QLibraryInfo, QObject, QProcess, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtQml import QJSValue
 
 from .. import __version__, config, paths
 from ..dispatcher.player import Player, list_tracks, pick_track, resolve_chain
@@ -79,6 +80,10 @@ class SettingsBackend(QObject):
 
     @Slot(str, "QVariant")
     def set(self, key: str, value) -> None:
+        # JS arrays/objects arrive as an opaque QJSValue rather than a Python
+        # list/dict; unwrap them so schema validation sees real data.
+        if isinstance(value, QJSValue):
+            value = value.toVariant()
         self._store.set(key, value)
 
     @Slot(str, result="QVariant")
