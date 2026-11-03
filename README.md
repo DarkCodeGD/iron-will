@@ -22,6 +22,7 @@
 </p>
 
 - **Session sounds:** plays a random track from your library on **login**, **resume from suspend**, and **screen unlock**. A notification with a **Stop** button shows while it plays.
+- **Waits for your password:** after waking up behind the lock screen, both the sound and the visualizer wait until you've unlocked, then start together.
 - **Desktop visualizer:** a click-through spectrum visualizer on the desktop layer, sitting right above your panel. It never steals focus and never covers windows.
 - **Genre presets:** one tap retunes the bounce physics and frequency range for metal, phonk, electronic, hip-hop, calm and more.
 - **Settings app:** a GUI for every setting. Changes auto-save, and the visualizer **updates live** as you drag sliders.
@@ -69,6 +70,15 @@ Not in the mood for the full track? Any of these stops it, no matter which part 
 | **Terminal** | `iron-will-audio --stop` |
 
 Going to sleep also stops the sound, so a track never freezes mid-song and plays on after you wake up.
+
+## Waking up
+
+Plasma locks the screen when the laptop goes to sleep, so the moment you're *really* back is when you type your password, not when the lid opens. Iron Will treats it that way:
+
+1. **Lid opens → lock screen.** Silence. The visualizer stays hidden and cava is stopped, so nothing runs behind the lock screen.
+2. **Password entered.** Within about half a second, the **resume sound** plays (just one sound, not resume plus unlock) and the bars fade in.
+
+Without a lock screen, the resume sound plays after *Resume delay* as usual. A plain lock and unlock (Meta+L) works the same way: the visualizer pauses while locked, and the *Screen unlock* sound plays when you're back.
 
 ## Settings app
 
@@ -159,6 +169,7 @@ Key design decisions:
 - **Asymmetric EMA physics.** Bars rise with a short time constant and fall with a long one, using `alpha = 1 − e^(−dt/τ)`, so motion looks the same at any frame rate. Peak caps hang, then fall with gravity.
 - **Zero cost when idle.** After the configured silence, the visualizer fades out and stops its render timer completely.
 - **Survives suspend and hot-plug.** When an output disappears (suspend, lid close, unplugged monitor), the compositor closes the layer surface. Qt's default would then quit the app with a *clean* exit that `Restart=on-failure` ignores. Instead, a window guardian pauses rendering, and recovers in **one calm step** once the desktop has settled: it restarts cava (if we slept), then re-shows the bars with a fade-in, and moves them back to their home output when that returns. It detects the wake by watching `CLOCK_BOOTTIME − CLOCK_MONOTONIC` jump. Doing nothing for the first ~2.5 s after a wake matters, because that's when KWin, PipeWire and the network are all reconnecting at once.
+- **The lock screen is the gate.** Both components watch `org.freedesktop.ScreenSaver`. After a resume, the daemon asks `GetActive()` instead of trusting signals sent around the suspend; if the screen is locked, the resume sound is held until the unlock. The visualizer's guardian treats "locked" as a hard stop: it pauses drawing, stops cava, and runs its recovery step only after the unlock.
 - **A real lock → unlock, not any signal.** An unlock only counts after a lock was seen, only from the actual ScreenSaver owner, and never between `PrepareForSleep(true)` and `(false)`. The lock screen can flap while the machine goes down, and that used to start a sound that froze mid-suspend.
 - **User daemon, not `system-sleep` hooks.** Root sleep hooks can't reach your PipeWire session. The daemon listens on D-Bus as you, uses `CLOCK_BOOTTIME` for the cooldown (time spent suspended counts), waits for an audio sink with `wpctl` after resume, and holds a kernel `flock` so sounds never overlap across processes.
 
@@ -168,7 +179,7 @@ Key design decisions:
 iron_will/
   config.py  presets.py  paths.py  accent.py  util.py  qtcommon.py
   dispatcher/   player.py  daemon.py  notify.py  chime.py
-  visualizer/   cava.py  physics.py  demo.py  renderer.py  layout.py  guardian.py  app.py  qml/
+  visualizer/   cava.py  physics.py  demo.py  renderer.py  layout.py  guardian.py  lockwatch.py  app.py  qml/
   settings/     backend.py  app.py  qml/{Main.qml, components/, pages/}
   assets/iron-will.svg
 systemd/  desktop/  config/config.example.toml  install.sh  uninstall.sh

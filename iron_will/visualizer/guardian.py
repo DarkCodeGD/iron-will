@@ -28,12 +28,18 @@ and looked like the visualizer started twice. So every trigger (surface
 closed, wake, screen added) just pokes one debounced *settle* timer. When
 things have been quiet for a moment it does everything at once: restart
 cava if we slept, then show the window, which fades in from zero.
+
+**Nothing runs behind the lock screen.** On a laptop, "resume" means "the
+lock screen appeared"; you're only back once you've typed your password.
+While the screen is locked the visualizer is paused and cava is stopped,
+and the recovery step waits for the unlock.
 """
 
 from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from typing import Callable
 
 from PySide6.QtCore import QEvent, QObject, QTimer
@@ -46,6 +52,7 @@ SLEEP_GAP_S = 4.0          # a ≥4s jump between the two clocks = we were suspe
 SETTLE_MS = 1200           # act once screens/surfaces have been quiet this long
 WAKE_SETTLE_S = 2.5        # …and never sooner than this after a wake-up
 RETRY_BACKOFF_MS = (1000, 2000, 5000, 10000)  # still no output? poll gently
+UNLOCK_SETTLE_MS = 300     # after the password: come back promptly, the desktop is ready
 
 
 def _sleep_offset() -> float:
@@ -63,18 +70,27 @@ def _screen_named(app: QGuiApplication, name: str):
     return next((s for s in app.screens() if name and s.name() == name), None)
 
 
+@dataclass
+class Hooks:
+    """What the guardian controls. All are called on the Qt thread."""
+    pause: Callable[[], None]        # stop drawing (window gone, or screen locked)
+    resume: Callable[[], None]       # start drawing again from zero, fading in
+    stop_audio: Callable[[], None]   # stop cava
+    start_audio: Callable[[], None]  # (re)start cava with the current settings
+
+
 class WindowGuardian(QObject):
-    def __init__(self, window: QWindow, on_hidden: Callable[[bool], None],
-                 on_resume: Callable[[], None], parent: QObject | None = None) -> None:
-        """*on_hidden(hidden)* pauses/resumes rendering; *on_resume()* restarts audio."""
+    def __init__(self, window: QWindow, hooks: Hooks, lock=None, parent: QObject | None = None) -> None:
+        """*lock* is an optional LockWatcher (``.locked`` + ``changed(bool)``)."""
         super().__init__(parent)
         self._window = window
-        self._on_hidden = on_hidden
-        self._on_resume = on_resume
+        self._hooks = hooks
+        self._lock = lock
         self._quitting = False
         self._moving = False
-        self._audio_stale = False   # slept since cava was last started
-        self._hold_until = 0.0      # monotonic time before which we don't act (still waking)
+        self._paused = False         # rendering paused by us
+        self._audio_stale = False    # cava must be (re)started at the next recovery
+        self._hold_until = 0.0       # monotonic time before which we don't act (still waking)
         self._attempt = 0
         self._last_offset = _sleep_offset()
         # The output we belong on: the one we started on. QtWayland's
@@ -90,12 +106,22 @@ class WindowGuardian(QObject):
         app.screenAdded.connect(self._poke)
         app.primaryScreenChanged.connect(self._poke)
         window.visibleChanged.connect(self._on_visible_changed)
+        if lock is not None:
+            lock.changed.connect(self._on_lock_changed)
 
         self._settle = QTimer(self, singleShot=True)
         self._settle.timeout.connect(self._settled)
         self._sleep_timer = QTimer(self, interval=SLEEP_CHECK_MS)
         self._sleep_timer.timeout.connect(self._check_sleep)
         self._sleep_timer.start()
+
+    # ── public ────────────────────────────────────────────────────────────
+    def request_audio_restart(self) -> None:
+        """Settings changed: restart cava now, or at unlock if we're locked."""
+        if self._locked():
+            self._audio_stale = True
+        else:
+            self._hooks.start_audio()
 
     # ── shutdown ──────────────────────────────────────────────────────────
     def eventFilter(self, obj, event) -> bool:
@@ -110,27 +136,57 @@ class WindowGuardian(QObject):
         self._quitting = True
         self._settle.stop()
 
+    # ── helpers ───────────────────────────────────────────────────────────
+    def _locked(self) -> bool:
+        return self._lock is not None and self._lock.locked
+
+    def _pause(self) -> None:
+        if not self._paused:
+            self._paused = True
+            self._hooks.pause()
+
+    def _unpause(self) -> None:
+        if self._paused:
+            self._paused = False
+            self._hooks.resume()
+
     # ── triggers: all of them just (re)start the settle timer ─────────────
-    def _poke(self, *_args) -> None:
+    def _poke(self, *_args, delay: int = SETTLE_MS) -> None:
         if not self._quitting:
             self._attempt = 0
-            self._settle.start(SETTLE_MS)
+            self._settle.start(delay)
 
     def _on_visible_changed(self, visible: bool) -> None:
         if self._quitting or self._moving:
             return
-        self._on_hidden(not visible)
-        if not visible:
-            log.info("visualizer surface was closed (output removed or suspended); waiting for a screen")
-            self._poke()
+        if visible:
+            if not self._locked():
+                self._unpause()
+            return
+        self._pause()
+        log.info("visualizer surface was closed (output removed or suspended); waiting for a screen")
+        self._poke()
+
+    def _on_lock_changed(self, locked: bool) -> None:
+        if self._quitting:
+            return
+        if locked:
+            self._settle.stop()        # no recovery behind the lock screen
+            self._pause()
+            self._hooks.stop_audio()
+            self._audio_stale = True
+        else:
+            self._poke(delay=UNLOCK_SETTLE_MS)
 
     def _check_sleep(self) -> None:
         offset = _sleep_offset()
         slept, self._last_offset = offset - self._last_offset, offset
         if slept >= SLEEP_GAP_S:
-            log.info("woke up after %.0fs of suspend; recovering once the desktop settles", slept)
+            log.info("woke up after %.0fs of suspend; waiting for the desktop to settle", slept)
             self._audio_stale = True
             self._hold_until = time.monotonic() + WAKE_SETTLE_S
+            if self._lock is not None:
+                self._lock.refresh()   # lock-screen signals can be missed around a suspend
             self._poke()
 
     # ── the one recovery step ─────────────────────────────────────────────
@@ -144,6 +200,9 @@ class WindowGuardian(QObject):
         if wait > 0:
             self._settle.start(int(wait * 1000) + 50)
             return
+        if self._locked():
+            log.info("screen is locked; the visualizer will start after you unlock")
+            return                     # the unlock pokes us again
         app = QGuiApplication.instance()
         hidden = not self._window.isVisible()
         if hidden and not _has_real_screen(app):
@@ -154,15 +213,16 @@ class WindowGuardian(QObject):
 
         if self._audio_stale:      # restart capture first, so the bars come back on fresh frames
             self._audio_stale = False
-            log.info("restarting audio capture after wake")
-            self._on_resume()
+            log.info("starting audio capture")
+            self._hooks.start_audio()
         if hidden:
             screen = self._target_screen()
             if screen is not None and self._window.screen() is not screen:
                 self._window.setScreen(screen)
             log.info("re-showing the visualizer on %s", screen.name() if screen else "?")
-            self._window.show()    # if the compositor closes it again, visibleChanged pokes us
+            self._window.show()    # → visibleChanged → fade in; if closed again, we get poked
         else:
+            self._unpause()
             self._go_home()
 
     def _target_screen(self):

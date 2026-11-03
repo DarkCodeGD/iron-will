@@ -6,7 +6,7 @@ Data flow::
                                    │                  VisualizerItem (look, physics)
                                    └─ cava keys? ──▶ CavaProcess.restart
     PipeWire ──▶ cava (stdout pipe) ──frame──▶ VisualizerItem.feed ──▶ paint
-    suspend / output loss ──▶ WindowGuardian ──▶ re-show window, restart cava
+    suspend / output loss / lock ──▶ WindowGuardian ──▶ pause, then re-show + restart cava
 """
 
 from __future__ import annotations
@@ -23,8 +23,9 @@ from .. import config
 from ..qtcommon import ConfigStore, install_signal_handlers
 from ..util import acquire_lock, setup_logging
 from .cava import CavaProcess
-from .guardian import WindowGuardian
+from .guardian import Hooks, WindowGuardian
 from .layout import LayoutModel
+from .lockwatch import LockWatcher
 from .renderer import VisualizerItem, register_qml_types
 
 log = logging.getLogger("iron_will.visualizer")
@@ -85,18 +86,21 @@ def main(argv: list[str] | None = None) -> int:
         analysis = {f.key: v[f.path] for f in config.FIELDS if f.section == "analysis"}
         cava.start(config.cava_bar_count(v), v["visualizer.fps"], analysis)
 
-    store.changed.connect(lambda keys: restart_cava() if keys & config.CAVA_KEYS else None)
     restart_cava()
 
-    # Survive suspend / lid close / monitor unplug instead of quitting with the
-    # last window. Hiding the item stops its render timer while off-screen;
-    # coming back starts from zero and fades in (no stale pre-sleep frame).
-    def on_hidden(hidden: bool) -> None:
-        if not hidden:
-            item.reset()
-        item.setVisible(not hidden)
+    def resume_drawing() -> None:
+        item.reset()               # no stale pre-sleep frame: start at zero, fade in
+        item.setVisible(True)
 
-    guardian = WindowGuardian(root, on_hidden=on_hidden, on_resume=restart_cava, parent=app)
+    # Survive suspend / lid close / monitor unplug instead of quitting with the
+    # last window, and stay paused behind the lock screen. Hiding the item
+    # stops its render timer, so a paused visualizer costs nothing.
+    guardian = WindowGuardian(
+        root,
+        Hooks(pause=lambda: item.setVisible(False), resume=resume_drawing,
+              stop_audio=cava.stop, start_audio=restart_cava),
+        lock=LockWatcher(app), parent=app)
+    store.changed.connect(lambda keys: guardian.request_audio_restart() if keys & config.CAVA_KEYS else None)
     guardian.setObjectName("guardian")
     app.aboutToQuit.connect(cava.stop)
     return app.exec()

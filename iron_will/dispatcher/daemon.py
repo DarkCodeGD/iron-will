@@ -9,6 +9,11 @@ Runs as a *user* systemd service (no root). It listens on D-Bus:
       True → False → screen unlocked (a real locked→unlocked transition only)
 * daemon start → login (once per session; a crash-restart won't replay it)
 
+Resume is held back while the lock screen is up: on a laptop "resume" means
+"the lock screen appeared", and you're only really back once you've typed
+your password. So after a resume with a locked screen, the resume sound
+plays right after the unlock instead (one sound, not resume + unlock).
+
 Between PrepareForSleep(True) and (False) we're "sleeping": KDE locks the
 screen and the lock screen can flap ActiveChanged while the machine goes
 down, so unlocks are ignored there — otherwise a sound starts, freezes
@@ -73,6 +78,7 @@ class Dispatcher:
         self._session: Gio.DBusConnection | None = None
         self._notifier: Notifier | None = None
         self._sleeping = False
+        self._resume_waiting = False   # resumed behind the lock screen; play once unlocked
         # Is the screen locked? None = unknown (then any unlock signal counts).
         self._locked: bool | None = None
 
@@ -115,8 +121,9 @@ class Dispatcher:
         marker.write_text(fingerprint)
         return True
 
-    def _sync_lock_state(self) -> None:
-        """Ask the screensaver whether the screen is locked right now (async)."""
+    def _sync_lock_state(self, then=None) -> None:
+        """Ask the screensaver whether the screen is locked right now (async).
+        *then(locked)* runs with the answer (None when it can't be known)."""
         def reply(bus, result) -> None:
             try:
                 (self._locked,) = bus.call_finish(result).unpack()
@@ -124,6 +131,8 @@ class Dispatcher:
             except GLib.Error as exc:
                 log.debug("ScreenSaver.GetActive failed: %s", exc.message)
                 self._locked = None
+            if then:
+                then(self._locked)
         self._session.call(SCREENSAVER, "/org/freedesktop/ScreenSaver", SCREENSAVER, "GetActive", None,
                            GLib.VariantType("(b)"), Gio.DBusCallFlags.NONE, 2000, None, reply)
 
@@ -133,27 +142,56 @@ class Dispatcher:
         if going_to_sleep:
             log.info("suspending — cancelling pending sounds")
             self._sleeping = True
+            self._resume_waiting = False
             self._cancel_pending()
             self._stop_playback()   # any Iron Will sound, not just ours
         else:
             self._sleeping = False
-            self._sync_lock_state()  # lock-screen signals during suspend may have been missed
+            # Lock-screen signals during suspend may have been missed (or were
+            # ghosts), so ask for the truth before deciding when to play.
+            self._sync_lock_state(then=self._after_resume)
+
+    def _after_resume(self, locked: bool | None) -> None:
+        if self._sleeping:          # went straight back to sleep
+            return
+        if locked:
+            log.info("resumed behind the lock screen — the sound will play after you unlock")
+            self._resume_waiting = True
+        else:
             self.trigger("resume")
 
     def _on_screensaver(self, _conn, _sender, _path, _iface, _signal, params, *_):
         (active,) = params.unpack()
         was_locked, self._locked = self._locked, active
         if active:
+            if "resume" in self._pending and not self._sleeping:
+                # The lock screen showed up just after the resume: wait for it.
+                GLib.source_remove(self._pending.pop("resume"))
+                self._resume_waiting = True
+                log.info("screen locked after resume — the sound will play after you unlock")
             return
         if was_locked is False:
             log.debug("ActiveChanged(false) without a lock — ignored")  # e.g. KDE's duplicate path
         elif self._sleeping:
             log.info("unlock signal while suspending — ignored")
+        elif self._resume_waiting:
+            self._resume_waiting = False
+            self._welcome_back()
+        else:
+            self.trigger("unlock")
+
+    def _welcome_back(self) -> None:
+        """First unlock after a resume: play *one* sound, now that you're back."""
+        log.info("unlocked after resume — welcome back")
+        cfg = config.load(fallback=True)
+        if cfg["sounds.on_resume"]:
+            # The audio devices have long woken up by now: use the short unlock delay.
+            self.trigger("resume", delay=cfg["sounds.unlock_delay"])
         else:
             self.trigger("unlock")
 
     # ── scheduling ────────────────────────────────────────────────────────
-    def trigger(self, event: str) -> None:
+    def trigger(self, event: str, delay: float | None = None) -> None:
         cfg = config.load(fallback=True)
         if not cfg[f"sounds.on_{event}"]:
             log.debug("%s: disabled in config", event)
@@ -161,7 +199,7 @@ class Dispatcher:
         if event in self._pending:
             # KDE emits ActiveChanged on two object paths; collapse duplicates.
             return
-        delay_ms = int(cfg[f"sounds.{event}_delay"] * 1000)
+        delay_ms = int((cfg[f"sounds.{event}_delay"] if delay is None else delay) * 1000)
         log.info("%s detected — playing in %.1fs", event, delay_ms / 1000)
         self._pending[event] = GLib.timeout_add(delay_ms, self._fire, event)
 
