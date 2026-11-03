@@ -89,9 +89,14 @@ def main(argv: list[str] | None = None) -> int:
     restart_cava()
 
     # Survive suspend / lid close / monitor unplug instead of quitting with the
-    # last window. Hiding the item stops its render timer while off-screen.
-    guardian = WindowGuardian(root, on_hidden=lambda hidden: item.setVisible(not hidden),
-                              on_resume=restart_cava, parent=app)
+    # last window. Hiding the item stops its render timer while off-screen;
+    # coming back starts from zero and fades in (no stale pre-sleep frame).
+    def on_hidden(hidden: bool) -> None:
+        if not hidden:
+            item.reset()
+        item.setVisible(not hidden)
+
+    guardian = WindowGuardian(root, on_hidden=on_hidden, on_resume=restart_cava, parent=app)
     guardian.setObjectName("guardian")
     app.aboutToQuit.connect(cava.stop)
     return app.exec()

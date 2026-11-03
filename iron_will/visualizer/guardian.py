@@ -19,6 +19,15 @@ Two things go wrong when the machine sleeps:
    Fix: detect the sleep and restart cava. ``CLOCK_BOOTTIME`` keeps counting
    while suspended and ``CLOCK_MONOTONIC`` doesn't, so a sudden jump in
    their difference *is* a suspend. This needs no D-Bus and works anywhere.
+
+**One calm recovery, not a flurry.** The first second after a wake is the
+busiest moment the desktop has: CPUs come back online, KWin rebuilds its
+outputs, PipeWire and NetworkManager reconnect. Re-creating a GL surface
+and restarting cava *separately* in that window made the desktop stutter
+and looked like the visualizer started twice. So every trigger (surface
+closed, wake, screen added) just pokes one debounced *settle* timer. When
+things have been quiet for a moment it does everything at once: restart
+cava if we slept, then show the window, which fades in from zero.
 """
 
 from __future__ import annotations
@@ -34,9 +43,9 @@ log = logging.getLogger("iron_will.visualizer")
 
 SLEEP_CHECK_MS = 2000
 SLEEP_GAP_S = 4.0          # a ≥4s jump between the two clocks = we were suspended
-CAVA_SETTLE_MS = 2500      # give PipeWire a moment to rebuild its graph after wake
-RESHOW_BACKOFF_MS = (250, 1000, 2000, 5000, 10000)
-HOME_DEBOUNCE_MS = 800     # screen hot-plug arrives as a burst of signals
+SETTLE_MS = 1200           # act once screens/surfaces have been quiet this long
+WAKE_SETTLE_S = 2.5        # …and never sooner than this after a wake-up
+RETRY_BACKOFF_MS = (1000, 2000, 5000, 10000)  # still no output? poll gently
 
 
 def _sleep_offset() -> float:
@@ -64,6 +73,8 @@ class WindowGuardian(QObject):
         self._on_resume = on_resume
         self._quitting = False
         self._moving = False
+        self._audio_stale = False   # slept since cava was last started
+        self._hold_until = 0.0      # monotonic time before which we don't act (still waking)
         self._attempt = 0
         self._last_offset = _sleep_offset()
         # The output we belong on: the one we started on. QtWayland's
@@ -76,20 +87,17 @@ class WindowGuardian(QObject):
         app.setQuitOnLastWindowClosed(False)
         app.aboutToQuit.connect(self._about_to_quit)
         app.installEventFilter(self)  # see QEvent.Quit *before* Qt closes our window
-        app.screenAdded.connect(self._on_screens_changed)
+        app.screenAdded.connect(self._poke)
+        app.primaryScreenChanged.connect(self._poke)
         window.visibleChanged.connect(self._on_visible_changed)
 
-        self._reshow_timer = QTimer(self, singleShot=True)
-        self._reshow_timer.timeout.connect(self._try_reshow)
-        self._home_timer = QTimer(self, singleShot=True, interval=HOME_DEBOUNCE_MS)
-        self._home_timer.timeout.connect(self._go_home)
+        self._settle = QTimer(self, singleShot=True)
+        self._settle.timeout.connect(self._settled)
         self._sleep_timer = QTimer(self, interval=SLEEP_CHECK_MS)
         self._sleep_timer.timeout.connect(self._check_sleep)
         self._sleep_timer.start()
-        self._resume_timer = QTimer(self, singleShot=True, interval=CAVA_SETTLE_MS)
-        self._resume_timer.timeout.connect(self._resumed)
 
-    # ── window lifecycle ──────────────────────────────────────────────────
+    # ── shutdown ──────────────────────────────────────────────────────────
     def eventFilter(self, obj, event) -> bool:
         # Qt 6's quit() closes every window while handling QEvent.Quit, i.e.
         # before aboutToQuit; without this a normal shutdown would look like
@@ -100,25 +108,74 @@ class WindowGuardian(QObject):
 
     def _about_to_quit(self) -> None:
         self._quitting = True
-        self._reshow_timer.stop()
+        self._settle.stop()
+
+    # ── triggers: all of them just (re)start the settle timer ─────────────
+    def _poke(self, *_args) -> None:
+        if not self._quitting:
+            self._attempt = 0
+            self._settle.start(SETTLE_MS)
+
+    def _on_visible_changed(self, visible: bool) -> None:
+        if self._quitting or self._moving:
+            return
+        self._on_hidden(not visible)
+        if not visible:
+            log.info("visualizer surface was closed (output removed or suspended); waiting for a screen")
+            self._poke()
+
+    def _check_sleep(self) -> None:
+        offset = _sleep_offset()
+        slept, self._last_offset = offset - self._last_offset, offset
+        if slept >= SLEEP_GAP_S:
+            log.info("woke up after %.0fs of suspend; recovering once the desktop settles", slept)
+            self._audio_stale = True
+            self._hold_until = time.monotonic() + WAKE_SETTLE_S
+            self._poke()
+
+    # ── the one recovery step ─────────────────────────────────────────────
+    def _settled(self) -> None:
+        if self._quitting:
+            return
+        # Timers that were due during the suspend all fire the moment we're
+        # thawed; make sure the wake is noticed before acting on anything.
+        self._check_sleep()
+        wait = self._hold_until - time.monotonic()
+        if wait > 0:
+            self._settle.start(int(wait * 1000) + 50)
+            return
+        app = QGuiApplication.instance()
+        hidden = not self._window.isVisible()
+        if hidden and not _has_real_screen(app):
+            log.debug("no output yet (attempt %d)", self._attempt)
+            self._settle.start(RETRY_BACKOFF_MS[min(self._attempt, len(RETRY_BACKOFF_MS) - 1)])
+            self._attempt += 1
+            return
+
+        if self._audio_stale:      # restart capture first, so the bars come back on fresh frames
+            self._audio_stale = False
+            log.info("restarting audio capture after wake")
+            self._on_resume()
+        if hidden:
+            screen = self._target_screen()
+            if screen is not None and self._window.screen() is not screen:
+                self._window.setScreen(screen)
+            log.info("re-showing the visualizer on %s", screen.name() if screen else "?")
+            self._window.show()    # if the compositor closes it again, visibleChanged pokes us
+        else:
+            self._go_home()
 
     def _target_screen(self):
         """Home output if it's connected, else Qt's primary (first real) one."""
         app = QGuiApplication.instance()
         return _screen_named(app, self._home) or app.primaryScreen()
 
-    def _on_screens_changed(self, _screen) -> None:
-        if self._window.isVisible():
-            self._home_timer.start()     # maybe our home output just came back
-        else:
-            self._schedule_reshow(reset=True)
-
     def _go_home(self) -> None:
         """After hot-plug, return to the home output if we got stranded on
         another one. A layer surface's output is fixed when it's created, so
         moving means re-creating it: hide → setScreen → show."""
         home = _screen_named(QGuiApplication.instance(), self._home)
-        if self._quitting or not self._window.isVisible() or home is None or self._window.screen() is home:
+        if home is None or self._window.screen() is home:
             return
         log.info("moving the visualizer back to %s", home.name())
         self._moving = True
@@ -128,54 +185,3 @@ class WindowGuardian(QObject):
             self._window.show()
         finally:
             self._moving = False
-
-    def _on_visible_changed(self, visible: bool) -> None:
-        if self._quitting or self._moving:
-            return
-        self._on_hidden(not visible)
-        if visible:
-            self._attempt = 0
-            self._reshow_timer.stop()
-        else:
-            log.info("visualizer surface was closed (output removed or suspended); waiting for a screen")
-            self._schedule_reshow(reset=True)
-
-    def _schedule_reshow(self, reset: bool = False) -> None:
-        if self._quitting or self._window.isVisible():
-            return
-        if reset:
-            self._attempt = 0
-        delay = RESHOW_BACKOFF_MS[min(self._attempt, len(RESHOW_BACKOFF_MS) - 1)]
-        self._reshow_timer.start(delay)
-
-    def _try_reshow(self) -> None:
-        if self._quitting or self._window.isVisible():
-            return
-        app = QGuiApplication.instance()
-        self._attempt += 1
-        if not _has_real_screen(app):
-            log.debug("no output yet (attempt %d)", self._attempt)
-            self._schedule_reshow()  # still no outputs: keep polling with backoff
-            return
-        screen = self._target_screen()
-        if screen is not None and self._window.screen() is not screen:
-            self._window.setScreen(screen)
-        log.info("re-showing the visualizer on %s", screen.name() if screen else "?")
-        self._window.show()
-        # The compositor may close it again (e.g. that output is going away
-        # too); visibleChanged would then schedule the next attempt.
-        if not self._window.isVisible():
-            self._schedule_reshow()
-
-    # ── suspend detection ─────────────────────────────────────────────────
-    def _check_sleep(self) -> None:
-        offset = _sleep_offset()
-        slept = offset - self._last_offset
-        self._last_offset = offset
-        if slept >= SLEEP_GAP_S:
-            log.info("woke up after %.0fs of suspend; restarting audio capture shortly", slept)
-            self._resume_timer.start()
-            self._schedule_reshow(reset=True)
-
-    def _resumed(self) -> None:
-        self._on_resume()

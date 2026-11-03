@@ -101,6 +101,19 @@ class VisualizerItem(QQuickPaintedItem):
             self._last_loud = time.monotonic()
             self._wake()
 
+    @Slot()
+    def reset(self) -> None:
+        """Forget everything on screen and fade back in from nothing.
+
+        Used when the window comes back after a suspend: the last frame from
+        before the sleep is stale, and popping it up only to drop it looks
+        like a glitch. Starting at zero with fade 0 gives a soft fade-in."""
+        self._physics.reset()
+        self._targets = []
+        self._fade = 0.0
+        self._last_loud = float("-inf")
+        self.update()
+
     # ── config ────────────────────────────────────────────────────────────
     def _on_store_changed(self, _keys) -> None:
         self._apply_config()

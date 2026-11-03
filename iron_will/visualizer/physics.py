@@ -47,6 +47,12 @@ class BarPhysics:
         self._peak_velocity = self._peak_velocity[:n] + [0.0] * pad
         self._peak_hold = self._peak_hold[:n] + [0.0] * pad
 
+    def reset(self) -> None:
+        """Drop every bar and cap to zero (stale state from before a suspend)."""
+        n = len(self.values)
+        self.values, self.peaks = [0.0] * n, [0.0] * n
+        self._peak_velocity, self._peak_hold = [0.0] * n, [0.0] * n
+
     def step(self, targets: list[float], dt: float) -> None:
         n = len(self.values)
         up = 1.0 if self.attack_s <= 0 else 1.0 - math.exp(-dt / self.attack_s)
