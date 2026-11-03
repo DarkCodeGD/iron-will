@@ -16,12 +16,14 @@ import logging
 import shutil
 from pathlib import Path
 
-from PySide6.QtCore import Property, QLibraryInfo, QObject, QProcess, QTimer, QUrl, Signal, Slot
+from PySide6.QtCore import (Property, QFileSystemWatcher, QLibraryInfo, QObject, QProcess, QTimer, QUrl,
+                            Signal, Slot)
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtQml import QJSValue
 
 from .. import __version__, config, paths, presets
-from ..dispatcher.player import Player, list_tracks, pick_track, resolve_chain
+from ..dispatcher.player import (STOPPED, Player, list_tracks, now_playing, pick_track, request_stop,
+                                resolve_chain)
 
 log = logging.getLogger("iron_will.settings")
 
@@ -35,6 +37,7 @@ class SettingsBackend(QObject):
     revisionChanged = Signal()
     dirtyChanged = Signal()
     servicesChanged = Signal()
+    nowPlayingChanged = Signal()
     toast = Signal(str, str)  # message, kind ("info" | "error")
 
     def __init__(self, store, parent: QObject | None = None) -> None:
@@ -44,13 +47,22 @@ class SettingsBackend(QObject):
         self._dirty = False
         self._player = Player()
         self._services: list[dict] = []
+        self._now_playing = ""
+        # Any process (daemon, CLI, this app) creating/removing playback.json
+        # shows up here instantly; the debounce lets the flock settle first.
+        self._playing_watch = QFileSystemWatcher([str(paths.runtime_dir())], self)
+        self._playing_debounce = QTimer(self, singleShot=True, interval=120)
+        self._playing_debounce.timeout.connect(self._refresh_now_playing)
+        self._playing_watch.directoryChanged.connect(lambda _p: self._playing_debounce.start())
         store.changed.connect(self._on_store_changed)
         store.saved.connect(self._on_saved)
         self._service_timer = QTimer(self)
         self._service_timer.setInterval(3000)
         self._service_timer.timeout.connect(self.refreshServices)
+        self._service_timer.timeout.connect(self._refresh_now_playing)  # belt and braces
         self._service_timer.start()
         self.refreshServices()
+        self._refresh_now_playing()
 
     # ── generic settings access ───────────────────────────────────────────
     def _get_revision(self) -> int:
@@ -163,13 +175,31 @@ class SettingsBackend(QObject):
         track = pick_track(tracks, cfg["sounds.avoid_repeat"])
 
         def done(ok: bool, message: str) -> None:  # runs on the player thread;
-            if not ok:                              # Qt queues the signal safely
+            if not ok and message != STOPPED:       # Qt queues the signal safely
                 self.toast.emit(f"Playback failed: {message}", "error")
 
         if self._player.play(track, volume=cfg["sounds.volume"], backend=cfg["sounds.backend"], on_done=done):
             self.toast.emit(f"Playing {track.name}", "info")
         else:
             self.toast.emit("A sound is already playing", "info")
+        self._refresh_now_playing()
+
+    # ── now playing / stop (works for sounds started by any process) ─────
+    def _refresh_now_playing(self) -> None:
+        playing = now_playing()
+        name = Path(playing["track"]).stem if playing and playing.get("track") else ("…" if playing else "")
+        if name != self._now_playing:
+            self._now_playing = name
+            self.nowPlayingChanged.emit()
+
+    nowPlaying = Property(str, lambda s: s._now_playing, notify=nowPlayingChanged)
+
+    @Slot()
+    def stopSound(self) -> None:
+        stopped = request_stop()
+        if stopped:
+            self.toast.emit(f"Stopped {Path(stopped).stem}", "info")
+        self._refresh_now_playing()
 
     @Slot(str)
     def openPath(self, path: str) -> None:

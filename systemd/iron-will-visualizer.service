@@ -8,8 +8,11 @@ After=graphical-session.target plasma-plasmashell.service pipewire.service
 [Service]
 Type=simple
 ExecStart=@BIN_DIR@/iron-will-visualizer
-Restart=on-failure
+# "always": a clean exit is still unexpected for a desktop widget. Exit 3 means
+# another instance already runs, so don't loop on that one.
+Restart=always
 RestartSec=3
+RestartPreventExitStatus=3
 
 [Install]
 WantedBy=graphical-session.target

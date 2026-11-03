@@ -9,3 +9,16 @@ Terminal=false
 Categories=AudioVideo;Audio;Settings;Qt;
 Keywords=visualizer;cava;sound;login;audio;spectrum;
 StartupWMClass=iron-will-settings
+Actions=stop-sound;play-sound;
+
+# Right-click the launcher entry, or bind a key in System Settings → Keyboard →
+# Shortcuts → Add New → Application → Iron Will.
+[Desktop Action stop-sound]
+Name=Stop session sound
+Icon=media-playback-stop
+Exec=@BIN_DIR@/iron-will-audio --stop
+
+[Desktop Action play-sound]
+Name=Play a random session sound
+Icon=media-playback-start
+Exec=@BIN_DIR@/iron-will-audio --play

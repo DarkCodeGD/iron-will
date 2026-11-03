@@ -6,6 +6,7 @@ Data flow::
                                    │                  VisualizerItem (look, physics)
                                    └─ cava keys? ──▶ CavaProcess.restart
     PipeWire ──▶ cava (stdout pipe) ──frame──▶ VisualizerItem.feed ──▶ paint
+    suspend / output loss ──▶ WindowGuardian ──▶ re-show window, restart cava
 """
 
 from __future__ import annotations
@@ -22,11 +23,13 @@ from .. import config
 from ..qtcommon import ConfigStore, install_signal_handlers
 from ..util import acquire_lock, setup_logging
 from .cava import CavaProcess
+from .guardian import WindowGuardian
 from .layout import LayoutModel
 from .renderer import VisualizerItem, register_qml_types
 
 log = logging.getLogger("iron_will.visualizer")
 QML_DIR = Path(__file__).resolve().parent / "qml"
+EXIT_ALREADY_RUNNING = 3  # the unit's RestartPreventExitStatus — don't restart-loop on it
 
 
 def _load(engine: QQmlApplicationEngine, name: str):
@@ -41,7 +44,7 @@ def main(argv: list[str] | None = None) -> int:
     lock = acquire_lock("visualizer")
     if lock is None:
         log.error("the visualizer is already running")
-        return 1
+        return EXIT_ALREADY_RUNNING
     config.ensure_exists()
 
     app = QGuiApplication(sys.argv if argv is None else argv)
@@ -84,5 +87,11 @@ def main(argv: list[str] | None = None) -> int:
 
     store.changed.connect(lambda keys: restart_cava() if keys & config.CAVA_KEYS else None)
     restart_cava()
+
+    # Survive suspend / lid close / monitor unplug instead of quitting with the
+    # last window. Hiding the item stops its render timer while off-screen.
+    guardian = WindowGuardian(root, on_hidden=lambda hidden: item.setVisible(not hidden),
+                              on_resume=restart_cava, parent=app)
+    guardian.setObjectName("guardian")
     app.aboutToQuit.connect(cava.stop)
     return app.exec()

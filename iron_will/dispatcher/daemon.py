@@ -3,11 +3,19 @@
 Runs as a *user* systemd service (no root). It listens on D-Bus:
 
 * system bus  ``org.freedesktop.login1.Manager.PrepareForSleep(b)``
-      True  → about to suspend: cancel anything pending
+      True  → about to suspend: cancel anything pending, stop what's playing
       False → resumed: play (after a delay + waiting for an audio sink)
 * session bus ``org.freedesktop.ScreenSaver.ActiveChanged(b)``
-      False → screen unlocked (KDE's kscreenlocker emits this)
+      True → False → screen unlocked (a real locked→unlocked transition only)
 * daemon start → login (once per session; a crash-restart won't replay it)
+
+Between PrepareForSleep(True) and (False) we're "sleeping": KDE locks the
+screen and the lock screen can flap ActiveChanged while the machine goes
+down, so unlocks are ignored there — otherwise a sound starts, freezes
+mid-suspend and plays on after wake (and eats the resume sound's cooldown).
+
+While a sound plays, a notification offers a Stop button; ``--stop`` (and the
+settings app) stop it from anywhere.
 
 Config is re-read on every event, so edits apply without a restart.
 """
@@ -26,7 +34,8 @@ from gi.repository import Gio, GLib
 
 from .. import config, paths
 from ..util import acquire_lock, setup_logging
-from .player import Player, list_tracks, pick_track
+from .notify import Notifier
+from .player import STOPPED, Player, list_tracks, now_playing, pick_track, request_stop
 
 log = logging.getLogger("iron_will.dispatcher")
 
@@ -34,6 +43,7 @@ EVENTS = ("login", "resume", "unlock")
 # After the configured delay, how long we'll additionally wait for PipeWire to
 # expose a default output before giving it a go anyway.
 SINK_WAIT = {"login": 15.0, "resume": 10.0, "unlock": 3.0, "test": 0.0}
+SCREENSAVER = "org.freedesktop.ScreenSaver"
 
 
 def _now() -> float:
@@ -60,6 +70,11 @@ class Dispatcher:
         self._pending: dict[str, int] = {}  # event -> GLib source id
         self._last_played = float("-inf")
         self._subscriptions: list[tuple[Gio.DBusConnection, int]] = []
+        self._session: Gio.DBusConnection | None = None
+        self._notifier: Notifier | None = None
+        self._sleeping = False
+        # Is the screen locked? None = unknown (then any unlock signal counts).
+        self._locked: bool | None = None
 
     # ── wiring ────────────────────────────────────────────────────────────
     def start(self) -> None:
@@ -68,9 +83,14 @@ class Dispatcher:
         self._subscriptions.append((system, system.signal_subscribe(
             "org.freedesktop.login1", "org.freedesktop.login1.Manager", "PrepareForSleep",
             "/org/freedesktop/login1", None, Gio.DBusSignalFlags.NONE, self._on_prepare_for_sleep)))
+        # Only the real screensaver (KWin on Plasma) — the bus resolves the
+        # well-known name to its owner, so other apps can't fake an unlock.
         self._subscriptions.append((session, session.signal_subscribe(
-            None, "org.freedesktop.ScreenSaver", "ActiveChanged",
+            SCREENSAVER, SCREENSAVER, "ActiveChanged",
             None, None, Gio.DBusSignalFlags.NONE, self._on_screensaver)))
+        self._session = session
+        self._notifier = Notifier(session, on_stop=self._stop_playback)
+        self._sync_lock_state()
         log.info("listening for resume (logind) and unlock (ScreenSaver) events")
         if self._first_start_this_session():
             self.trigger("login")
@@ -80,6 +100,8 @@ class Dispatcher:
             conn.signal_unsubscribe(sub_id)
         self._cancel_pending()
         self.player.stop()
+        if self._notifier:
+            self._notifier.shutdown()
 
     def _first_start_this_session(self) -> bool:
         marker = paths.runtime_dir() / "login-played"
@@ -93,19 +115,41 @@ class Dispatcher:
         marker.write_text(fingerprint)
         return True
 
+    def _sync_lock_state(self) -> None:
+        """Ask the screensaver whether the screen is locked right now (async)."""
+        def reply(bus, result) -> None:
+            try:
+                (self._locked,) = bus.call_finish(result).unpack()
+                log.debug("screen locked: %s", self._locked)
+            except GLib.Error as exc:
+                log.debug("ScreenSaver.GetActive failed: %s", exc.message)
+                self._locked = None
+        self._session.call(SCREENSAVER, "/org/freedesktop/ScreenSaver", SCREENSAVER, "GetActive", None,
+                           GLib.VariantType("(b)"), Gio.DBusCallFlags.NONE, 2000, None, reply)
+
     # ── D-Bus handlers ────────────────────────────────────────────────────
     def _on_prepare_for_sleep(self, _conn, _sender, _path, _iface, _signal, params, *_):
         (going_to_sleep,) = params.unpack()
         if going_to_sleep:
             log.info("suspending — cancelling pending sounds")
+            self._sleeping = True
             self._cancel_pending()
-            self.player.stop()
+            self._stop_playback()   # any Iron Will sound, not just ours
         else:
+            self._sleeping = False
+            self._sync_lock_state()  # lock-screen signals during suspend may have been missed
             self.trigger("resume")
 
     def _on_screensaver(self, _conn, _sender, _path, _iface, _signal, params, *_):
         (active,) = params.unpack()
-        if not active:
+        was_locked, self._locked = self._locked, active
+        if active:
+            return
+        if was_locked is False:
+            log.debug("ActiveChanged(false) without a lock — ignored")  # e.g. KDE's duplicate path
+        elif self._sleeping:
+            log.info("unlock signal while suspending — ignored")
+        else:
             self.trigger("unlock")
 
     # ── scheduling ────────────────────────────────────────────────────────
@@ -128,6 +172,8 @@ class Dispatcher:
 
     def _fire(self, event: str) -> bool:
         self._pending.pop(event, None)
+        if self._sleeping:
+            return GLib.SOURCE_REMOVE
         cfg = config.load(fallback=True)
         now = _now()
         if now - self._last_played < cfg["sounds.cooldown"]:
@@ -140,13 +186,33 @@ class Dispatcher:
             return GLib.SOURCE_REMOVE
         track = pick_track(tracks, cfg["sounds.avoid_repeat"])
         started = self.player.play(track, volume=cfg["sounds.volume"], backend=cfg["sounds.backend"],
-                                   wait_sink=SINK_WAIT[event])
+                                   wait_sink=SINK_WAIT[event], event=event, on_done=self._on_played)
         if started:
             self._last_played = now
             log.info("%s → %s", event, track.name)
+            if cfg["sounds.notify"] and self._notifier:
+                self._notifier.show(track.stem, event)
         else:
             log.info("%s: a sound is already playing — skipped", event)
         return GLib.SOURCE_REMOVE
+
+    # ── playback lifecycle ────────────────────────────────────────────────
+    def _stop_playback(self) -> None:
+        stopped = request_stop()
+        if stopped:
+            log.info("stopped %s", stopped)
+        if self._notifier:
+            self._notifier.close()
+
+    def _on_played(self, _ok: bool, message: str) -> None:
+        # Player worker thread → hop onto the GLib loop before touching D-Bus state.
+        def done() -> bool:
+            if self._notifier:
+                self._notifier.close()
+            if message == STOPPED:
+                log.info("playback stopped")
+            return GLib.SOURCE_REMOVE
+        GLib.idle_add(done)
 
 
 def play_once(event: str = "test") -> int:
@@ -161,26 +227,43 @@ def play_once(event: str = "test") -> int:
     done = threading.Event()
     result: list[bool] = []
 
+    stopped = [False]
+
     def finished(ok: bool, message: str) -> None:
+        stopped[0] = message == STOPPED  # stopped on request isn't a failure
         result.append(ok)
         log.info("%s", message)
         done.set()
 
     log.info("playing %s", track)
     if not Player().play(track, volume=cfg["sounds.volume"], backend=cfg["sounds.backend"],
-                         wait_sink=SINK_WAIT.get(event, 0.0), on_done=finished):
+                         wait_sink=SINK_WAIT.get(event, 0.0), event=event, on_done=finished):
         log.error("another sound is already playing")
         return 1
     done.wait()
-    return 0 if result and result[0] else 1
+    return 0 if result and (result[0] or stopped[0]) else 1
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="iron-will-audio", description="Iron Will session sound daemon")
     parser.add_argument("--play", action="store_true", help="play one random track now and exit")
     parser.add_argument("--list", action="store_true", help="list the tracks that would be used")
+    parser.add_argument("--stop", action="store_true", help="stop the sound Iron Will is playing")
+    parser.add_argument("--status", action="store_true", help="print what is playing (exit 1 if nothing)")
     args = parser.parse_args(argv)
     setup_logging()
+
+    if args.stop:
+        stopped = request_stop()
+        print(f"stopped {stopped}" if stopped else "nothing is playing")
+        return 0
+    if args.status:
+        playing = now_playing()
+        if playing is None:
+            print("nothing is playing")
+            return 1
+        print(f"playing {Path(playing['track']).name} ({playing.get('event') or 'unknown'})")
+        return 0
 
     if args.list:
         directory = paths.expand(config.load(fallback=True)["sounds.directory"])

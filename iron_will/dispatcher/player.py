@@ -7,15 +7,22 @@ and can never go stale — if a process dies the kernel releases it.
 
 Each play runs on a short-lived worker thread, walking a backend fallback chain
 (pw-play → paplay → ffplay → mpv) until one exits successfully.
+
+Any process can ask "what's playing?" (``now_playing``) and stop it
+(``request_stop``) — that's how the notification's Stop button, the settings
+app and ``iron-will-audio --stop`` all reach a sound started elsewhere.
 """
 
 from __future__ import annotations
 
 import fcntl
+import json
 import logging
 import os
 import random
+import secrets
 import shutil
+import signal
 import subprocess
 import threading
 import time
@@ -86,14 +93,14 @@ def resolve_chain(preferred: str = "auto") -> list[str]:
     return available
 
 
-def wait_for_sink(timeout: float, cancel: threading.Event) -> bool:
+def wait_for_sink(timeout: float, cancelled: Callable[[], bool]) -> bool:
     """Poll WirePlumber until a default output exists (after resume the audio
     graph can take a few seconds to come back). Returns True if one appeared.
     Without ``wpctl`` we can't check, so we just trust the configured delay."""
     if not shutil.which("wpctl"):
         return True
     deadline = time.monotonic() + timeout
-    while not cancel.is_set():
+    while not cancelled():
         try:
             probe = subprocess.run(["wpctl", "inspect", "@DEFAULT_AUDIO_SINK@"],
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=2)
@@ -103,50 +110,154 @@ def wait_for_sink(timeout: float, cancel: threading.Event) -> bool:
             pass
         if time.monotonic() >= deadline:
             return False
-        cancel.wait(0.4)
+        time.sleep(0.3)
     return False
+
+
+# ── cross-process "now playing" + stop ─────────────────────────────────────
+#
+# The flock says *whether* a sound is playing; a small JSON file next to it
+# says *what* and *who*. A stop request writes the playback's random token to
+# STOP_FILE (so a request can never hit a later, different playback) and then
+# SIGTERMs the player child. The owner notices the token between steps too,
+# so a sound that's still waiting for an audio device is cancelled as well.
+
+STATE_FILE = "playback.json"
+STOP_FILE = "playback.stop"
+STOPPED = "stopped"  # on_done message when a user / suspend stopped playback
+
+
+def _lock_path() -> Path:
+    return paths.runtime_dir() / "playback.lock"
+
+
+def _read_json(path: Path) -> dict:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_atomic(path: Path, text: str) -> None:
+    tmp = path.with_name(f".{path.name}.{os.getpid()}")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def is_playing() -> bool:
+    """True while any Iron Will process holds the playback lock."""
+    try:
+        fd = os.open(_lock_path(), os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600)
+    except OSError:
+        return False
+    try:
+        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        return False
+    except BlockingIOError:
+        return True
+    finally:
+        os.close(fd)  # also drops our probe lock if we got it
+
+
+def now_playing() -> dict | None:
+    """``{"track", "event", "owner", ...}`` for the sound playing right now, else None."""
+    if not is_playing():
+        return None
+    state = _read_json(paths.runtime_dir() / STATE_FILE)
+    return state if state.get("track") else {"track": "", "event": ""}
+
+
+def _is_player_process(pid: int, track: str) -> bool:
+    """Guard against PID reuse: only signal a process whose argv has our track."""
+    try:
+        argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+    except OSError:
+        return False
+    return track.encode() in argv
+
+
+def request_stop() -> str | None:
+    """Stop whatever Iron Will is playing, in any process.
+
+    Returns the stopped track's file name, or None if nothing was playing.
+    """
+    playing = now_playing()
+    if playing is None:
+        return None
+    token = playing.get("token")
+    if token:
+        _write_atomic(paths.runtime_dir() / STOP_FILE, token)
+    child, track = playing.get("child"), playing.get("track", "")
+    if isinstance(child, int) and _is_player_process(child, track):
+        try:
+            os.kill(child, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    return Path(track).name if track else ""
 
 
 class Player:
     def __init__(self) -> None:
-        self._lock_path = paths.runtime_dir() / "playback.lock"
         self._proc: subprocess.Popen | None = None
         self._proc_mutex = threading.Lock()
         self._cancel = threading.Event()
 
-    def play(self, track: Path, *, volume: float = 1.0, backend: str = "auto",
-             wait_sink: float = 0.0, on_done: DoneCallback | None = None) -> bool:
+    def play(self, track: Path, *, volume: float = 1.0, backend: str = "auto", wait_sink: float = 0.0,
+             event: str = "test", on_done: DoneCallback | None = None) -> bool:
         """Start playing *track* in the background.
 
         Returns False immediately (without playing) if any Iron Will process is
         already playing a sound. ``on_done(ok, message)`` fires from the worker
-        thread when playback finishes.
+        thread when playback finishes; *message* is ``STOPPED`` when it was
+        stopped on request.
         """
-        fd = os.open(self._lock_path, os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600)
+        fd = os.open(_lock_path(), os.O_CREAT | os.O_RDWR | os.O_CLOEXEC, 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             os.close(fd)
             return False
         self._cancel.clear()
-        threading.Thread(target=self._run, args=(fd, track, volume, backend, wait_sink, on_done),
+        state = {"track": str(track), "event": event, "owner": os.getpid(), "child": None,
+                 "token": secrets.token_hex(8), "started": time.time()}
+        self._write_state(state)
+        threading.Thread(target=self._run, args=(fd, state, volume, backend, wait_sink, on_done),
                          name="iron-will-playback", daemon=True).start()
         return True
 
     def stop(self) -> None:
-        """Cancel a pending/ongoing playback (e.g. we're about to suspend)."""
+        """Cancel this player's pending/ongoing playback."""
         self._cancel.set()
         with self._proc_mutex:
             if self._proc and self._proc.poll() is None:
                 self._proc.terminate()
 
-    def _run(self, lock_fd: int, track: Path, volume: float, backend: str,
+    # ── worker ────────────────────────────────────────────────────────────
+    @staticmethod
+    def _write_state(state: dict) -> None:
+        try:
+            _write_atomic(paths.runtime_dir() / STATE_FILE, json.dumps(state))
+        except OSError as exc:
+            log.debug("cannot write playback state: %s", exc)
+
+    def _cancelled(self, token: str) -> bool:
+        if self._cancel.is_set():
+            return True
+        try:
+            return (paths.runtime_dir() / STOP_FILE).read_text(encoding="utf-8") == token
+        except OSError:
+            return False
+
+    def _run(self, lock_fd: int, state: dict, volume: float, backend: str,
              wait_sink: float, on_done: DoneCallback | None) -> None:
+        track, token = Path(state["track"]), state["token"]
+        cancelled = lambda: self._cancelled(token)  # noqa: E731
         ok, message = False, ""
         try:
-            if wait_sink > 0 and not wait_for_sink(wait_sink, self._cancel):
-                if self._cancel.is_set():
-                    message = "cancelled"
+            if wait_sink > 0 and not wait_for_sink(wait_sink, cancelled):
+                if cancelled():
+                    message = STOPPED
                     return
                 log.warning("no audio output after %.0fs — trying anyway", wait_sink)
 
@@ -155,8 +266,8 @@ class Player:
                 message = "no audio player found (install pipewire-utils)"
                 return
             for name in chain:
-                if self._cancel.is_set():
-                    message = "cancelled"
+                if cancelled():
+                    message = STOPPED
                     return
                 try:
                     proc = subprocess.Popen(build_command(name, track, volume), stdin=subprocess.DEVNULL,
@@ -166,19 +277,26 @@ class Player:
                     continue
                 with self._proc_mutex:
                     self._proc = proc
+                self._write_state({**state, "child": proc.pid})
+                if cancelled():          # a stop raced in before the child pid was published
+                    proc.terminate()
                 _, err = proc.communicate()
                 with self._proc_mutex:
                     self._proc = None
                 if proc.returncode == 0:
                     ok, message = True, f"played {track.name} via {name}"
                     return
-                if self._cancel.is_set():
-                    message = "cancelled"
+                if cancelled():
+                    message = STOPPED
                     return
                 log.warning("%s failed (exit %s): %s — trying next backend",
                             name, proc.returncode, err.decode(errors="replace").strip()[-300:])
             message = "every audio backend failed, see the log"
         finally:
+            run = paths.runtime_dir()
+            if _read_json(run / STATE_FILE).get("token") == token:
+                (run / STATE_FILE).unlink(missing_ok=True)
+            (run / STOP_FILE).unlink(missing_ok=True)
             os.close(lock_fd)  # releases the flock → next sound may play
             if message and not ok:
                 log.info("playback: %s", message)

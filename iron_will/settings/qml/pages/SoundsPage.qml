@@ -11,6 +11,7 @@ PageScaffold {
     resetSections: ["sounds"]
 
     readonly property color tone: Theme.secondary
+    readonly property bool playing: backend.nowPlaying !== ""
     property var info: ({ path: "", exists: false, count: 0, tracks: [] })
     property string scannedDir: ""
 
@@ -74,14 +75,23 @@ PageScaffold {
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontSmall
             }
+            Chip {
+                // Anything Iron Will is playing, whoever started it (login,
+                // resume, unlock, this button or the CLI).
+                visible: page.playing
+                Layout.maximumWidth: 320
+                accent: page.tone
+                iconName: "volume"
+                text: "Now playing · " + backend.nowPlaying
+            }
             Item { Layout.fillWidth: true }
             PillButton {
                 kind: "primary"
                 accent: page.tone
-                iconName: "play"
-                text: "Play random track"
-                enabled: page.info.count > 0
-                onClicked: backend.playTest()
+                iconName: page.playing ? "stop" : "play"
+                text: page.playing ? "Stop" : "Play random track"
+                enabled: page.playing || page.info.count > 0
+                onClicked: page.playing ? backend.stopSound() : backend.playTest()
             }
         }
 
@@ -133,6 +143,10 @@ PageScaffold {
             description: "Auto tries each installed player until one works"
         }
         ToggleRow { key: "sounds.avoid_repeat"; accent: page.tone; label: "Avoid repeats"; description: "Never play the same track twice in a row" }
+        ToggleRow {
+            key: "sounds.notify"; accent: page.tone; label: "Stop button notification"
+            description: "Show a notification with a Stop button while a session sound plays"
+        }
     }
 
     FolderDialog {

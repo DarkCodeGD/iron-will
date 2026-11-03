@@ -21,7 +21,7 @@
   <img src="docs/images/visualizer.gif" width="760" alt="Animated visualizer in mirror mode">
 </p>
 
-- **Session sounds:** plays a random track from your library on **login**, **resume from suspend**, and **screen unlock**.
+- **Session sounds:** plays a random track from your library on **login**, **resume from suspend**, and **screen unlock**. A notification with a **Stop** button shows while it plays.
 - **Desktop visualizer:** a click-through spectrum visualizer on the desktop layer, sitting right above your panel. It never steals focus and never covers windows.
 - **Genre presets:** one tap retunes the bounce physics and frequency range for metal, phonk, electronic, hip-hop, calm and more.
 - **Settings app:** a GUI for every setting. Changes auto-save, and the visualizer **updates live** as you drag sliders.
@@ -55,6 +55,20 @@ Different music needs different physics. Fast double-bass drumming needs bars th
 | **Jazz & Acoustic** | 40 / 380 ms | 60 Hz – 14 kHz | natural instruments, soft dynamics |
 
 Presets live in [`iron_will/presets.py`](iron_will/presets.py). Each one is a single line of values, so adding your own genre is easy.
+
+## Stopping a sound
+
+Not in the mood for the full track? Any of these stops it, no matter which part of Iron Will started it:
+
+| Where | How |
+|---|---|
+| **Notification** | Press **Stop** on the "Login / Resume / Unlock sound" popup (toggle it under *Session Sounds → Playback*) |
+| **Settings app** | The *Play random track* button turns into **Stop** while anything is playing |
+| **App menu** | Right-click *Iron Will* → **Stop session sound** |
+| **Keyboard shortcut** | System Settings → Keyboard → Shortcuts → *Add New* → *Application* → Iron Will, then bind *Stop session sound* |
+| **Terminal** | `iron-will-audio --stop` |
+
+Going to sleep also stops the sound, so a track never freezes mid-song and plays on after you wake up.
 
 ## Settings app
 
@@ -108,6 +122,8 @@ The **System** page in the settings app shows this checklist live.
 | `iron-will-settings` | open the settings app (also in the app menu as *Iron Will*) |
 | `iron-will-audio --play` | play one random track now |
 | `iron-will-audio --list` | list the tracks the daemon would use |
+| `iron-will-audio --stop` | stop the sound that's playing (from any source) |
+| `iron-will-audio --status` | show what's playing (exit code 1 if nothing) |
 | `systemctl --user restart iron-will-visualizer` | restart the visualizer |
 | `journalctl --user -u iron-will-visualizer -u iron-will-audio -f` | follow the logs |
 
@@ -142,6 +158,8 @@ Key design decisions:
 - **cava over a stdout pipe, not a FIFO.** No stale `/tmp` files and no blocking open handshake, and EOF tells us immediately if cava dies (it's restarted with backoff). cava runs under `setpriv --pdeathsig`, so even a SIGKILL'd visualizer can't leave an orphan.
 - **Asymmetric EMA physics.** Bars rise with a short time constant and fall with a long one, using `alpha = 1 − e^(−dt/τ)`, so motion looks the same at any frame rate. Peak caps hang, then fall with gravity.
 - **Zero cost when idle.** After the configured silence, the visualizer fades out and stops its render timer completely.
+- **Survives suspend and hot-plug.** When an output disappears (suspend, lid close, unplugged monitor), the compositor closes the layer surface. Qt's default would then quit the app with a *clean* exit that `Restart=on-failure` ignores. Instead, a window guardian pauses rendering, re-shows the bars once a screen exists (and moves them back to their home output when it returns), and restarts cava after a wake. It detects the wake by watching `CLOCK_BOOTTIME − CLOCK_MONOTONIC` jump.
+- **A real lock → unlock, not any signal.** An unlock only counts after a lock was seen, only from the actual ScreenSaver owner, and never between `PrepareForSleep(true)` and `(false)`. The lock screen can flap while the machine goes down, and that used to start a sound that froze mid-suspend.
 - **User daemon, not `system-sleep` hooks.** Root sleep hooks can't reach your PipeWire session. The daemon listens on D-Bus as you, uses `CLOCK_BOOTTIME` for the cooldown (time spent suspended counts), waits for an audio sink with `wpctl` after resume, and holds a kernel `flock` so sounds never overlap across processes.
 
 ## Project layout
@@ -149,8 +167,8 @@ Key design decisions:
 ```
 iron_will/
   config.py  presets.py  paths.py  accent.py  util.py  qtcommon.py
-  dispatcher/   player.py  daemon.py  chime.py
-  visualizer/   cava.py  physics.py  demo.py  renderer.py  layout.py  app.py  qml/
+  dispatcher/   player.py  daemon.py  notify.py  chime.py
+  visualizer/   cava.py  physics.py  demo.py  renderer.py  layout.py  guardian.py  app.py  qml/
   settings/     backend.py  app.py  qml/{Main.qml, components/, pages/}
   assets/iron-will.svg
 systemd/  desktop/  config/config.example.toml  install.sh  uninstall.sh
@@ -162,3 +180,4 @@ systemd/  desktop/  config/config.example.toml  install.sh  uninstall.sh
 - **Visualizer is a normal window on Wayland?** The LayerShellQt QML module is missing. Install `layer-shell-qt`.
 - **Two login sounds?** Turn off Plasma's own login sound in System Settings → Notifications → Plasma Workspace.
 - **No sound after resume?** Raise *Resume delay* in Session Sounds. The daemon also waits up to 10 s for the audio device.
+- **Visualizer missing after waking up?** Check `journalctl --user -u iron-will-visualizer -b`. You should see *"surface was closed … waiting for a screen"* followed by *"re-showing the visualizer"*.

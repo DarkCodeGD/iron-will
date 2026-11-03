@@ -102,3 +102,5 @@ volume = 0.8
 backend = "auto"
 # Never play the same track twice in a row
 avoid_repeat = true
+# Show a notification with a Stop button while a session sound plays
+notify = true
