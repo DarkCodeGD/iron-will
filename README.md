@@ -33,13 +33,32 @@
   <img src="docs/images/desktop.jpg" alt="Iron Will visualizer running on a KDE Plasma 6 desktop, sitting just above the panel">
 </p>
 
-Three render modes, all anchored right above the Plasma panel and click-through:
+Four render modes, all anchored right above the Plasma panel and click-through:
 
 | | |
 |---|---|
 | **Bars** · pill-shaped, following the Plasma accent color | <img src="docs/images/desktop-bars.jpg" alt="Bars mode"> |
 | **Wave** · smooth curve with a custom gradient | <img src="docs/images/desktop-wave.jpg" alt="Wave mode"> |
 | **Mirror** · bass in the middle, with falling peak caps | <img src="docs/images/desktop-mirror.jpg" alt="Mirror mode"> |
+| **Fire** · GPU flames that surge on every kick (see [Fire mode](#fire-mode)) | <img src="docs/images/desktop-fire.jpg" alt="Fire mode"> |
+
+## Fire mode
+
+Stylized flames drawn by a GPU shader, built for rock and metal. Each part of the band drives a different part of the fire:
+
+| In the mix | In the fire |
+|---|---|
+| **Kick drum, bass** | a *surge*: the flames jump and the core flashes white-hot, then drop back within ~80 ms, so 16th-note double bass still reads as separate punches |
+| **Rhythm guitars, vocals** | the flame *bed*: how tall the fire burns |
+| **Snare, cymbals** | *sparks*: a crash throws a shower of embers |
+| **Overall drive** | *speed*: calm parts lick lazily, blast beats make it roar |
+
+Metal is mastered loud, so the level barely moves and a fire that followed plain loudness would sit at full height. Instead, each detector tracks how far its part of the spectrum jumps above its own recent average, scaled against the biggest recent hit. A kick still lands on top of a wall of guitars.
+
+- **Colors:** *Your colors* uses your gradient (first stop at the base, last at the tips, so the **Ascend** preset gives orange→crimson fire and a cool gradient gives blue fire). *Natural fire* ignores your colors.
+- **Height:** fire needs room. It comes alive at 220–300 px, and the Fire card offers a one-click resize when your visualizer is shorter.
+- **Cost:** about 8% of one CPU core in testing (bars: ~46% at the same size), because the GPU draws every pixel. Like the other modes, it stops completely after the idle fade.
+- **No GPU?** On a software-rendered desktop, fire mode falls back to bars.
 
 ## Genre presets
 
@@ -86,7 +105,7 @@ Flat, pill-shaped controls in a dark slate theme with the logo's fire palette: o
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/images/gui-appearance.png" alt="Appearance page"><br><sub><b>Appearance:</b> render mode, bar shape, colors and presets, with a live preview</sub></td>
+    <td width="50%"><img src="docs/images/gui-appearance.png" alt="Appearance page"><br><sub><b>Appearance:</b> render mode, bar shape, fire, colors and presets, with a live preview</sub></td>
     <td width="50%"><img src="docs/images/gui-layout.png" alt="Layout page"><br><sub><b>Layout:</b> a placement diagram plus edge, alignment, size, offsets and layer</sub></td>
   </tr>
   <tr>
@@ -179,7 +198,8 @@ Key design decisions:
 iron_will/
   config.py  presets.py  paths.py  accent.py  util.py  qtcommon.py
   dispatcher/   player.py  daemon.py  notify.py  chime.py
-  visualizer/   cava.py  physics.py  demo.py  renderer.py  layout.py  guardian.py  lockwatch.py  app.py  qml/
+  visualizer/   cava.py  physics.py  fire.py  demo.py  renderer.py  layout.py  guardian.py  lockwatch.py  app.py
+                qml/{Visualizer.qml, WaylandWindow.qml, X11Window.qml}  shaders/{fire.frag, fire.frag.qsb, build.sh}
   settings/     backend.py  app.py  qml/{Main.qml, components/, pages/}
   assets/iron-will.svg
 systemd/  desktop/  config/config.example.toml  install.sh  uninstall.sh
@@ -188,6 +208,7 @@ systemd/  desktop/  config/config.example.toml  install.sh  uninstall.sh
 ## Troubleshooting
 
 - **No bars?** Check `cava` is installed (System page), then look at `$XDG_RUNTIME_DIR/iron-will/cava.log`.
+- **Fire mode shows bars?** The desktop is rendering in software (no GPU shaders). The visualizer log says *"no GPU shaders"*.
 - **Visualizer is a normal window on Wayland?** The LayerShellQt QML module is missing. Install `layer-shell-qt`.
 - **Two login sounds?** Turn off Plasma's own login sound in System Settings → Notifications → Plasma Workspace.
 - **No sound after resume?** Raise *Resume delay* in Session Sounds. The daemon also waits up to 10 s for the audio device.

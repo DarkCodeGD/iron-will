@@ -4,7 +4,7 @@
 
 # ── Visualizer · look ───────────────────────────────────────────
 [visualizer]
-# Render style — bars | mirror | wave
+# Render style — bars | mirror | wave | fire
 mode = "bars"
 # Number of bars / wave points — 8 … 256
 bar_count = 64
@@ -43,6 +43,19 @@ peak_gravity = 2.5
 idle_fade = true
 # Seconds of silence before fading out — 0.5 … 60
 idle_timeout = 4.0
+
+# ── Visualizer · fire mode ──────────────────────────────────────
+[fire]
+# How tall the flames reach at full blast (share of the visualizer's height) — 0.2 … 1
+height = 0.9
+# How hard the music drives the fire — 0.3 … 2
+intensity = 1.0
+# Spark amount: embers thrown up by snare and cymbal hits (0 = none) — 0 … 1
+sparks = 0.6
+# Flame speed: how fast the flames churn (the music speeds them up further) — 0.3 … 2.5
+speed = 1.0
+# Flame colors: your gradient colors, or natural fire — colors | natural
+palette = "colors"
 
 # ── Visualizer · placement on screen ────────────────────────────
 [layout]

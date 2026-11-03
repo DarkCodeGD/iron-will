@@ -17,9 +17,7 @@ Window {
     height: layoutModel.height
     visible: true
 
-    VisualizerItem {
-        id: vis
-        objectName: "visualizer"
+    Visualizer {
         anchors.fill: parent
         store: configStore
     }

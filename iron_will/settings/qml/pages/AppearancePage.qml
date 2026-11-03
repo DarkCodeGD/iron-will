@@ -6,11 +6,21 @@ PageScaffold {
     id: page
     title: "Appearance"
     subtitle: "Style and colors of the desktop visualizer. Changes apply live to your desktop."
-    resetSections: ["visualizer"]
+    resetSections: ["visualizer", "fire"]
 
     readonly property int rev: backend.revision
     readonly property string mode: { rev; return backend.get("visualizer.mode") }
     readonly property bool accentMode: { rev; return backend.get("visualizer.color_source") === "accent" }
+    readonly property bool fire: mode === "fire"
+    readonly property bool bars: mode === "bars" || mode === "mirror"
+    readonly property int windowHeight: { rev; return backend.get("layout.height") }
+    readonly property bool naturalFire: { rev; return backend.get("fire.palette") === "natural" }
+    readonly property var modeHints: ({
+        bars: "Classic spectrum bars, bass on the left",
+        mirror: "Mirror puts the bass in the middle",
+        wave: "A smooth line through every band",
+        fire: "GPU flames: kicks surge, guitars feed the bed, cymbals throw sparks"
+    })
 
     PreviewCard {}
 
@@ -19,21 +29,27 @@ PageScaffold {
         subtitle: "Shape of the visualization"
         iconName: "bars"
 
-        SegmentedRow { key: "visualizer.mode"; label: "Render mode"; description: "Mirror puts the bass in the middle" }
-        SegmentedRow { key: "visualizer.direction"; label: "Grow direction" }
+        SegmentedRow { key: "visualizer.mode"; label: "Render mode"; description: page.modeHints[page.mode] || "" }
+        SegmentedRow { key: "visualizer.direction"; label: page.fire ? "Flame direction" : "Grow direction" }
         Divider {}
-        SliderRow { key: "visualizer.bar_count"; label: page.mode === "wave" ? "Wave points" : "Bar count"; stepSize: 1 }
+        SliderRow {
+            key: "visualizer.bar_count"; label: page.mode === "wave" ? "Wave points" : "Bar count"; stepSize: 1
+            visible: !page.fire
+        }
         SliderRow {
             key: "visualizer.spacing"; label: "Spacing"; unit: " px"
-            visible: page.mode !== "wave"
+            visible: page.bars
         }
         SliderRow {
             key: "visualizer.roundness"; label: "Roundness"; decimals: 2
             description: "0 = square corners, 1 = fully pill-shaped"
-            visible: page.mode !== "wave"
+            visible: page.bars
             format: function (v) { return Math.round(v * 100) + "%" }
         }
-        SliderRow { key: "visualizer.min_height"; label: "Resting height"; unit: " px"; description: "Height of a bar at silence while audio plays" }
+        SliderRow {
+            key: "visualizer.min_height"; label: "Resting height"; unit: " px"; description: "Height of a bar at silence while audio plays"
+            visible: !page.fire
+        }
         SliderRow {
             key: "visualizer.opacity"; label: "Opacity"; decimals: 2
             format: function (v) { return Math.round(v * 100) + "%" }
@@ -41,13 +57,74 @@ PageScaffold {
         ToggleRow {
             key: "visualizer.peaks"; label: "Peak caps"
             description: "Small caps that hang above bars, then fall with gravity"
-            visible: page.mode !== "wave"
+            visible: page.bars
+        }
+    }
+
+    Card {
+        title: "Fire"
+        subtitle: "How the flames burn and react to the music"
+        iconName: "flame"
+        visible: page.fire
+
+        // Fire needs height to breathe; the default strip is made for bars.
+        Rectangle {
+            visible: page.windowHeight < 200
+            Layout.fillWidth: true
+            implicitHeight: hintRow.implicitHeight + 24
+            radius: Theme.radiusInner
+            color: Theme.tint(Theme.primary, 0.10)
+            border.color: Theme.tint(Theme.primary, 0.35)
+            RowLayout {
+                id: hintRow
+                anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 14 }
+                spacing: 12
+                Icon { name: "flame"; size: 18; color: Theme.primary }
+                Text {
+                    Layout.fillWidth: true
+                    text: "Your visualizer is " + page.windowHeight + " px tall. Fire really comes alive at 220–300 px."
+                    color: Theme.text; font.pixelSize: Theme.fontSmall; wrapMode: Text.WordWrap
+                }
+                PillButton {
+                    kind: "ghost"; text: "Make it 260 px"
+                    onClicked: backend.set("layout.height", 260)
+                }
+            }
+        }
+
+        SegmentedRow {
+            key: "fire.palette"; label: "Flame colors"
+            description: page.naturalFire ? "Deep red tips, orange body, golden core"
+                                          : "Your gradient: first color at the base, last at the tips"
+            labels: ({ colors: "Your colors", natural: "Natural fire" })
+        }
+        Divider {}
+        SliderRow {
+            key: "fire.height"; label: "Flame height"; decimals: 2
+            description: "How much of the visualizer the flames reach at full blast"
+            format: function (v) { return Math.round(v * 100) + "%" }
+        }
+        SliderRow {
+            key: "fire.intensity"; label: "Intensity"; decimals: 2
+            description: "How hard the music drives the fire: kick surges, height, heat"
+            format: function (v) { return Math.round(v * 100) + "%" }
+        }
+        SliderRow {
+            key: "fire.sparks"; label: "Sparks"; decimals: 2
+            description: "Embers thrown up by snare and cymbal hits"
+            format: function (v) { return v < 0.005 ? "Off" : Math.round(v * 100) + "%" }
+        }
+        SliderRow {
+            key: "fire.speed"; label: "Flame speed"; decimals: 2
+            description: "Base churn speed. Fast, dense music speeds it up further."
+            format: function (v) { return v.toFixed(1) + "×" }
         }
     }
 
     Card {
         title: "Color"
-        subtitle: "Follow your Plasma accent, or build your own gradient"
+        subtitle: page.fire && page.naturalFire ? "Natural fire uses its own colors. Pick \u201cYour colors\u201d in the Fire card to use these."
+                                                : "Follow your Plasma accent, or build your own gradient"
         iconName: "palette"
 
         SegmentedRow {
@@ -80,6 +157,6 @@ PageScaffold {
 
         ColorStops { visible: !page.accentMode || !backend.accentColor }
 
-        SegmentedRow { key: "visualizer.gradient_direction"; label: "Gradient direction" }
+        SegmentedRow { key: "visualizer.gradient_direction"; label: "Gradient direction"; visible: !page.fire }
     }
 }

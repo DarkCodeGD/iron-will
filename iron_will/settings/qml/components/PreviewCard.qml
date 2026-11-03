@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import IronWill 1.0
 
-// Live preview: the *same* VisualizerItem the desktop uses, fed by a synthetic
+// Live preview: the *same* Visualizer the desktop uses, fed by a synthetic
 // music-like signal, so what you see here is exactly what you get.
 Rectangle {
     id: card
@@ -53,7 +53,7 @@ Rectangle {
         color: Theme.canvas
         clip: true
 
-        VisualizerItem {
+        Visualizer {
             store: configStore
             demo: true
             anchors.horizontalCenter: parent.horizontalCenter

@@ -29,9 +29,7 @@ Window {
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
     LayerShell.Window.activateOnShow: false
 
-    VisualizerItem {
-        id: vis
-        objectName: "visualizer"
+    Visualizer {
         anchors.fill: parent
         store: configStore
     }

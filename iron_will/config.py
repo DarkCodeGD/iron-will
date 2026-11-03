@@ -110,6 +110,7 @@ class Field:
 SECTIONS: dict[str, str] = {
     "visualizer": "Visualizer · look",
     "motion": "Visualizer · motion & physics",
+    "fire": "Visualizer · fire mode",
     "layout": "Visualizer · placement on screen",
     "analysis": "Visualizer · audio analysis (cava)",
     "sounds": "Session sounds",
@@ -117,7 +118,7 @@ SECTIONS: dict[str, str] = {
 
 FIELDS: tuple[Field, ...] = (
     # Look
-    Field("visualizer", "mode", "bars", "Render style", choices=("bars", "mirror", "wave")),
+    Field("visualizer", "mode", "bars", "Render style", choices=("bars", "mirror", "wave", "fire")),
     Field("visualizer", "bar_count", 64, "Number of bars / wave points", 8, 256),
     Field("visualizer", "spacing", 4, "Gap between bars in pixels", 0, 32),
     Field("visualizer", "roundness", 1.0, "Bar corner rounding: 0 = square, 1 = fully pill-shaped", 0.0, 1.0),
@@ -131,6 +132,13 @@ FIELDS: tuple[Field, ...] = (
     Field("visualizer", "gradient_direction", "vertical", "Gradient axis", choices=("horizontal", "vertical")),
     Field("visualizer", "peaks", True, "Draw falling peak caps above bars"),
     Field("visualizer", "fps", 60, "Frames per second (also cava's analysis rate)", 24, 165),
+    # Fire mode
+    Field("fire", "height", 0.9, "How tall the flames reach at full blast (share of the visualizer's height)", 0.2, 1.0),
+    Field("fire", "intensity", 1.0, "How hard the music drives the fire", 0.3, 2.0),
+    Field("fire", "sparks", 0.6, "Spark amount: embers thrown up by snare and cymbal hits (0 = none)", 0.0, 1.0),
+    Field("fire", "speed", 1.0, "Flame speed: how fast the flames churn (the music speeds them up further)", 0.3, 2.5),
+    Field("fire", "palette", "colors", "Flame colors: your gradient colors, or natural fire",
+          choices=("colors", "natural")),
     # Motion
     Field("motion", "attack_ms", 35, "Rise time constant in ms (lower = punchier)", 0, 500),
     Field("motion", "decay_ms", 220, "Fall time constant in ms (higher = smoother)", 10, 2000),
@@ -292,11 +300,17 @@ def ensure_exists(path: Path | None = None) -> Path:
 
 # ─── Derived values shared by several components ───────────────────────────
 
+FIRE_ANALYSIS_BANDS = 32  # cava bands in fire mode (the shader folds them into 16 columns)
+
+
 def cava_bar_count(values: dict[str, Any]) -> int:
     """How many bands cava must compute. Mirror mode shows every band twice
     (low frequencies in the middle), so it only needs half."""
+    mode = values["visualizer.mode"]
+    if mode == "fire":
+        return FIRE_ANALYSIS_BANDS  # the shader reads 16 columns; bar_count doesn't apply
     n = values["visualizer.bar_count"]
-    return math.ceil(n / 2) if values["visualizer.mode"] == "mirror" else n
+    return math.ceil(n / 2) if mode == "mirror" else n
 
 
 CAVA_KEYS = frozenset({"visualizer.bar_count", "visualizer.mode", "visualizer.fps"}
