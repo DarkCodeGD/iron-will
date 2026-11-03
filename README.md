@@ -1,10 +1,61 @@
-# Iron Will
+<p align="center">
+  <img src="iron_will/assets/iron-will.svg" width="112" alt="Iron Will icon">
+</p>
 
-A lightweight, modular desktop audio toolkit for **KDE Plasma 6** (Wayland first, X11 fallback):
+<h1 align="center">Iron Will</h1>
+
+<p align="center">
+  <b>A lightweight desktop audio toolkit for KDE Plasma 6</b><br>
+  Session sounds on login, resume and unlock, plus a click-through audio visualizer that lives on your desktop.
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/KDE_Plasma-6-1D99F3?logo=kde&logoColor=white" alt="KDE Plasma 6">
+  <img src="https://img.shields.io/badge/Wayland-layer--shell-FFBC00?logo=wayland&logoColor=black" alt="Wayland layer-shell">
+  <img src="https://img.shields.io/badge/Qt-PySide6-41CD52?logo=qt&logoColor=white" alt="PySide6">
+  <img src="https://img.shields.io/badge/audio-PipeWire_%2B_cava-2EC4B6" alt="PipeWire + cava">
+  <img src="https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white" alt="Python 3.11+">
+</p>
+
+<p align="center">
+  <img src="docs/images/visualizer.gif" width="760" alt="Animated visualizer in mirror mode">
+</p>
 
 - **Session sounds:** plays a random track from your library on **login**, **resume from suspend**, and **screen unlock**.
 - **Desktop visualizer:** a click-through spectrum visualizer on the desktop layer, sitting right above your panel. It never steals focus and never covers windows.
 - **Settings app:** a GUI for every setting. Changes auto-save, and the visualizer **updates live** as you drag sliders.
+
+## On the desktop
+
+<p align="center">
+  <img src="docs/images/desktop.jpg" alt="Iron Will visualizer running on a KDE Plasma 6 desktop, sitting just above the panel">
+</p>
+
+Three render modes, all anchored right above the Plasma panel and click-through:
+
+| | |
+|---|---|
+| **Bars** · pill-shaped, following the Plasma accent color | <img src="docs/images/desktop-bars.jpg" alt="Bars mode"> |
+| **Wave** · smooth curve with a custom gradient | <img src="docs/images/desktop-wave.jpg" alt="Wave mode"> |
+| **Mirror** · bass in the middle, with falling peak caps | <img src="docs/images/desktop-mirror.jpg" alt="Mirror mode"> |
+
+## Settings app
+
+Flat, pill-shaped controls in a dark slate theme with two complementary accents: teal for the visualizer, coral for session sounds. The live preview uses the same renderer as the desktop.
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/gui-appearance.png" alt="Appearance page"><br><sub><b>Appearance:</b> render mode, bar shape, colors and presets, with a live preview</sub></td>
+    <td width="50%"><img src="docs/images/gui-layout.png" alt="Layout page"><br><sub><b>Layout:</b> a placement diagram plus edge, alignment, size, offsets and layer</sub></td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/gui-motion.png" alt="Motion page"><br><sub><b>Motion:</b> attack/decay physics, peak gravity, idle fade, cava analysis</sub></td>
+    <td><img src="docs/images/gui-sounds.png" alt="Session Sounds page"><br><sub><b>Session Sounds:</b> library, trigger events with delays, volume, cooldown</sub></td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/images/gui-system.png" alt="System page"><br><sub><b>System:</b> background service toggles, a live dependency check, and the config file</sub></td>
+  </tr>
+</table>
 
 ## Install
 
