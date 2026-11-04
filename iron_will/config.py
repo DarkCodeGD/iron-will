@@ -140,7 +140,7 @@ FIELDS: tuple[Field, ...] = (
           f"Custom gradient stops (1 = solid color, up to {MAX_COLOR_STOPS})"),
     Field("visualizer", "gradient_direction", "vertical", "Gradient axis", choices=("horizontal", "vertical")),
     Field("visualizer", "peaks", True, "Draw falling peak caps above bars"),
-    Field("visualizer", "fps", 60, "Frames per second (also cava's analysis rate)", 24, 165),
+    Field("visualizer", "fps", 60, "Frames per second (also cava's analysis rate); the animation snaps to the nearest even share of the display's refresh rate", 24, 165),
     Field("visualizer", "gpu", "integrated",
           "Graphics card that draws the visualizer, on laptops with two: integrated (saves battery), "
           "dedicated, or plugged_in (dedicated only while on AC power)",

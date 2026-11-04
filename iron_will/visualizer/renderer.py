@@ -6,11 +6,20 @@ to the real thing.
 
 Render loop & idle behaviour
 ----------------------------
-A precise QTimer ticks at the configured fps: physics step → fade step →
-``update()``. Once audio has been silent long enough that the bars have
-settled *and* the fade-out finished, the timer stops completely: zero
-repaints and near-zero CPU while nothing is playing. The next loud frame from
-cava restarts it.
+A precise timer ticks: physics step → fade step → ``update()``. Once audio
+has been silent long enough that the bars have settled *and* the fade-out
+finished, the timer stops completely: zero repaints and near-zero CPU while
+nothing is playing. The next loud frame from cava restarts it.
+
+The tick rate is an even share of the display's refresh rate, the one
+closest to the fps setting (``frame_period``): 72 fps on a 144 Hz screen at
+fps 60, so every frame stays up for exactly two refreshes. Ticking at a
+plain 60 there would show frames for 2, 3, 2, 3 … refreshes, a judder that
+crisp shapes (tendrils, bars) make easy to see. Each tick is scheduled
+against a running deadline (no drift from rounding to whole milliseconds),
+and the simulation advances by exactly one frame period per frame, so
+motion moves the same distance between every two pictures on screen
+instead of following the timer's jitter. cava keeps analysing at fps.
 
 Spectrum modes on the GPU (bars, mirror, wave)
 ----------------------------------------------
@@ -97,6 +106,17 @@ def _vec4(values: list[float], start: int) -> QVector4D:
     return QVector4D(*values[start:start + 4])
 
 
+def frame_period(refresh_hz: float, fps: float) -> float:
+    """Seconds per tick: the even share of the display refresh closest to fps.
+
+    144 Hz at fps 60 → every 2nd refresh (72 fps); 60 Hz → 60; 165 Hz → 55;
+    75 Hz at fps 60 → 75. Without a sane refresh rate, plain fps."""
+    if not 20.0 <= refresh_hz <= 1000.0:
+        return 1.0 / fps
+    every = max(1, round(refresh_hz / fps))
+    return every / refresh_hz
+
+
 class VisualizerItem(QQuickPaintedItem):
     storeChanged = Signal()
     demoChanged = Signal()
@@ -127,10 +147,14 @@ class VisualizerItem(QQuickPaintedItem):
         self._last_tick = 0.0
         self._brush: QBrush | None = None
         self._brush_key: tuple | None = None
+        self._period = 1.0 / 60.0      # s per frame (frame_period)
+        self._deadline = 0.0           # when the current tick was due
         self._timer = QTimer(self)
         self._timer.setTimerType(Qt.TimerType.PreciseTimer)
+        self._timer.setSingleShot(True)   # each tick books the next one against the deadline
         self._timer.timeout.connect(self._tick)
         self.visibleChanged.connect(self._on_visible_changed)
+        self.windowChanged.connect(self._on_window_changed)
         self._apply_config()
 
     # ── QML properties ────────────────────────────────────────────────────
@@ -141,7 +165,10 @@ class VisualizerItem(QQuickPaintedItem):
         if store is self._store:
             return
         if self._store is not None:
-            self._store.changed.disconnect(self._on_store_changed)
+            try:
+                self._store.changed.disconnect(self._on_store_changed)
+            except RuntimeError:     # shutting down: the store is already gone (and so is the link)
+                pass
         self._store = store
         if store is not None:
             store.changed.connect(self._on_store_changed)
@@ -312,7 +339,7 @@ class VisualizerItem(QQuickPaintedItem):
             self._gpu.apply(c, self._colors)
         self.gpuStyleChanged.emit()
         self._demo_signal.style = presets.demo_style_for(c)
-        self._timer.setInterval(max(1, round(1000 / c["visualizer.fps"])))
+        self._update_period()
         self._brush_key = None
         self._wake()
         self.update()
@@ -324,15 +351,36 @@ class VisualizerItem(QQuickPaintedItem):
         else:
             self._timer.stop()  # hidden preview pages cost nothing
 
+    def _on_window_changed(self, window) -> None:
+        if window is not None:
+            window.screenChanged.connect(self._update_period)   # moved to another output
+        self._update_period()
+
+    def _update_period(self, *_args) -> None:
+        window = self.window()
+        screen = window.screen() if window is not None else None
+        refresh = screen.refreshRate() if screen is not None else 0.0
+        self._period = frame_period(refresh, self._cfg["visualizer.fps"])
+
     def _wake(self) -> None:
         if not self._timer.isActive() and self.isVisible():
             self._last_tick = time.monotonic()
-            self._timer.start()
+            self._deadline = self._last_tick + self._period
+            self._timer.start(max(0, round(self._period * 1000)))
 
     def _tick(self) -> None:
         now = time.monotonic()
-        dt = min(now - self._last_tick, 0.1)  # clamp after stalls
+        period = self._period
+        if now - self._deadline > period:
+            # A stall (a busy desktop, a resume): don't race to catch up, start
+            # over from now, moving by the time that really passed.
+            dt = min(now - self._last_tick, 0.1)
+            self._deadline = now
+        else:
+            dt = period                       # one frame on screen = one frame of motion
         self._last_tick = now
+        self._deadline += period
+        self._timer.start(max(0, round((self._deadline - now) * 1000)))
         c = self._cfg
         n = config.cava_bar_count(c)
 

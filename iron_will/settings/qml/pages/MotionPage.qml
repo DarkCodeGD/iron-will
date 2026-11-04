@@ -24,7 +24,7 @@ PageScaffold {
         Divider {}
         SliderRow { key: "motion.peak_hold_ms"; label: "Peak hold"; unit: " ms"; description: "How long caps hang before dropping"; stepSize: 50 }
         SliderRow { key: "motion.peak_gravity"; label: "Peak gravity"; decimals: 1; description: "How hard caps accelerate as they fall" }
-        SliderRow { key: "visualizer.fps"; label: "Frame rate"; unit: " fps"; description: "Match your monitor's refresh rate for the smoothest motion" }
+        SliderRow { key: "visualizer.fps"; label: "Frame rate"; unit: " fps"; description: "Snaps to an even share of your monitor's refresh rate, so every frame stays up equally long (60 on a 144 Hz screen runs at 72). Higher is smoother but uses more CPU." }
     }
 
     Card {

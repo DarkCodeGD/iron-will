@@ -24,7 +24,7 @@ colors = ["#2EC4B6", "#3A86FF", "#8338EC"]
 gradient_direction = "vertical"
 # Draw falling peak caps above bars
 peaks = true
-# Frames per second (also cava's analysis rate) — 24 … 165
+# Frames per second (also cava's analysis rate); the animation snaps to the nearest even share of the display's refresh rate — 24 … 165
 fps = 60
 # Graphics card that draws the visualizer, on laptops with two: integrated (saves battery), dedicated, or plugged_in (dedicated only while on AC power) — integrated | dedicated | plugged_in
 gpu = "integrated"

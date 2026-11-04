@@ -21,6 +21,24 @@ the base stays planted while the end thrashes. The integrated curve gives
 the S-shapes and hooks of the reference art, and moves like a living
 thing rather than a wiggling line.
 
+What keeps it from looking mechanical
+-------------------------------------
+Light may flash with the beat; motion may not jump. Everything that moves
+a tendril is a smooth signal:
+
+* **Writhing speed glides.** It follows the music's loudness (no kick
+  transients) through two cascaded followers, so it eases up and down with
+  no corners: a song that gets busy makes them squirm faster over about a
+  second, never in a lurch on every beat.
+* **Every tendril keeps its own clock**, running a little fast or slow and
+  drifting over time, so they don't all speed up at the same instant.
+* **The waves breathe.** Each wave's strength swells and fades on slow,
+  unrelated cycles, so the motion never visibly repeats.
+* **Loudness unfurls them.** Quiet passages let them coil up; loud ones
+  straighten them into a reach.
+* **Lashes grow in.** A whip eases in over a few frames and starts above
+  the root, so a kick bends the tendril instead of snapping it whole.
+
 =================  ===========================  ===============================
 group (spectrum)   in the mix                   becomes
 =================  ===========================  ===============================
@@ -90,7 +108,12 @@ LASH_SPEED = 2.3        # spine lengths per second: how fast a whip travels up
 LASH_LIFE = 0.9         # s
 LASH_DELAYS = (0.0, 0.05, 0.10)   # s: lashes reach the tendrils a little apart (three groups)
 BAND_TAU = 0.08
-ENERGY_TAU = 0.5
+ENERGY_TAU = 0.5        # light and essence (may follow the beat)
+DRIVE_RISE = 0.30       # s, per stage (two stages): how fast the writhing picks up…
+DRIVE_FALL = 0.75       # …and settles back
+REACH_RISE, REACH_FALL = 0.10, 0.45   # s: a tendril's own level, before the reach spring
+SWELL_RISE, SWELL_FALL = 0.04, 0.35   # s: the kick's push on reach, as a smooth bump
+LASH_ATTACK = 0.07      # s: a whip eases in instead of snapping
 RADIUS_UNIT = 6.0       # texel B = radius × 6 (⅙ px steps, up to 42 px)
 
 # Palette → (rim, glow near / essence, glow far), and the shader's param.
@@ -107,6 +130,13 @@ def smooth(a: float, b: float, x: float) -> float:
 
 
 HOOK_PROFILE = [smooth(0.6, 1.0, u) ** 2 * w for u, w in zip(SEG_MID, SEG_WEIGHTS)]  # the curl, at the tip
+LASH_ROOT = [smooth(0.0, 0.3, u) for u in SEG_MID]   # whips start above the root: the base stays planted
+
+
+def follow(x: float, target: float, dt: float, rise: float, fall: float) -> float:
+    """Exponential follower with separate rise and fall time constants."""
+    tau = rise if target > x else fall
+    return target + (x - target) * math.exp(-dt / tau)
 
 
 def enc(v: float) -> int:
@@ -131,7 +161,8 @@ def _lighten(hex_color: str, amount: float) -> str:
 class Tendril:
     __slots__ = ("root", "lean", "hfac", "thick", "layer", "curl_dir", "curl", "light",
                  "k1", "k2", "w1", "w2", "p1", "p2", "p3", "a1", "a2", "delay", "lash_dir",
-                 "reach", "points", "radii", "glow", "ph1", "ph2")
+                 "reach", "points", "radii", "glow", "ph1", "ph2",
+                 "clock", "tempo_f", "tempo_p", "b1_f", "b2_f", "level")
 
     def __init__(self, root: float, layer: float, rng: random.Random) -> None:
         self.root = root
@@ -162,6 +193,13 @@ class Tendril:
         self.ph2 = [TWO_PI * self.k2 * u + self.p2 for u in SEG_MID]
         self.reach = Spring()
         self.reach.x = 0.3 * self.hfac
+        self.level = 0.0                                # its own slice of the spectrum, smoothed
+        # Its own clock: a slightly different tempo that drifts slowly, so the
+        # nest never speeds up or sways in lockstep.
+        self.clock = rng.uniform(0.0, 50.0)
+        self.tempo_f, self.tempo_p = rng.uniform(0.07, 0.16), rng.uniform(0.0, TWO_PI)
+        # How fast each wave's strength breathes (Hz, unrelated per tendril).
+        self.b1_f, self.b2_f = rng.uniform(0.05, 0.11), rng.uniform(0.08, 0.17)
         self.points: list[tuple[float, float]] = []
         self.radii: list[float] = []
         self.glow = 0.0
@@ -219,7 +257,11 @@ class TendrilAnalyzer:
 
     def reset(self) -> None:
         self.phase = 0.0
+        self.time = 0.0                              # plain seconds (the breathing ignores the music)
         self.energy = self.bed = self.flash = self.crack_flash = 0.0
+        self.drive = self._drive1 = 0.0              # the smooth writhing drive (two stages)
+        self.swell = self._swell1 = 0.0              # the kick's smooth push on reach
+        self.speed = 0.45 * self.writhe
         self._kick = Transient(floor=0.10)
         self._crack = Transient(floor=0.08)
         self._prev_kick = self._prev_crack = 0.0
@@ -280,14 +322,26 @@ class TendrilAnalyzer:
         self._prev_kick, self._prev_crack = kick, crack
 
         self.bed = ema(self.bed, min(1.0, mid * 1.3), dt, 0.3)
+        # Light and essence may follow the beat…
         self.energy = ema(self.energy, min(1.0, 0.65 * self.bed + 0.6 * kick + 0.25 * high), dt, ENERGY_TAU)
         self.flash = max(self.flash * math.exp(-dt / 0.22), min(1.0, kick_hit * 1.4))
         self.crack_flash = max(self.crack_flash * math.exp(-dt / 0.15), min(1.0, crack_hit * 1.4))
+        # …motion follows the drive: loudness without the transients, through
+        # two followers in a row, so its rate of change is continuous too (no
+        # corners, nothing to see as a lurch).
+        target = min(1.0, 0.8 * self.bed + 0.3 * high)
+        self._drive1 = follow(self._drive1, target, dt, DRIVE_RISE, DRIVE_FALL)
+        self.drive = follow(self.drive, self._drive1, dt, DRIVE_RISE, DRIVE_FALL)
+        # The kick's push on reach: a smooth bump, not a step.
+        self._swell1 = follow(self._swell1, min(1.0, kick), dt, SWELL_RISE, SWELL_FALL)
+        self.swell = follow(self.swell, self._swell1, dt, SWELL_RISE, SWELL_FALL)
         # Writhing speed is the heart of it: slow and lazy in quiet parts,
         # frantic when the song goes off.
-        self.phase += dt * self.writhe * (0.45 + 2.6 * self.energy)
+        self.speed = self.writhe * (0.45 + 2.4 * self.drive)
+        self.phase += dt * self.speed
         if self.phase > 10_000.0:
             self.phase -= 10_000.0
+        self.time += dt
         self._cols = columns_from_bands(self._bands.step(raw, dt))
 
         if kick_hit > 0.2 and self.lash > 0.0:
@@ -308,34 +362,43 @@ class TendrilAnalyzer:
         return cols[i] + (cols[min(i + 1, len(cols) - 1)] - cols[i]) * (f - i)
 
     def _move_tendrils(self, dt: float, kick: float) -> None:
-        omega = 8.5                                        # reach spring: quick, with a little overshoot
+        omega = 7.0                                        # reach spring: lively, a touch of overshoot
         full = self.reach_setting * self.h
-        wild = 0.75 + 1.1 * self.energy                    # louder = wilder bends
-        T = self.phase
-        hook_gain = 14.0 * self.curl_setting
+        drive = self.drive
+        wild = 0.75 + 1.0 * drive                          # louder = wilder bends (smoothly)
+        hook_gain = 14.0 * self.curl_setting * (1.15 - 0.35 * drive)   # quiet: coiled; loud: unfurled
+        step = dt * self.speed
+        now = self.time
         # The kick whips, as a turn per segment, once per delay group (not per
         # tendril: identical maths, a fraction of the work).
         lash_turn = None
         if self._lashes:
-            lashes = [(age, s * math.exp(-age * 3.2)) for age, s in self._lashes]
-            lash_turn = [[6.5 * SEG_WEIGHTS[k] * sum(s * exp(-((SEG_MID[k] - (age - d) * LASH_SPEED) * 5.88) ** 2)
-                                                     for age, s in lashes) for k in range(SEGMENTS)]
+            lashes = [(age, s * smooth(0.0, LASH_ATTACK, age) * math.exp(-age * 3.2)) for age, s in self._lashes]
+            lash_turn = [[6.5 * SEG_WEIGHTS[k] * LASH_ROOT[k]
+                          * sum(s * exp(-((SEG_MID[k] - (age - d) * LASH_SPEED) * 5.88) ** 2) for age, s in lashes)
+                          for k in range(SEGMENTS)]
                          for d in LASH_DELAYS]
         for td in self.tendrils:
-            lvl = self._level_at(td.root)
-            target = td.hfac * (0.50 + 0.50 * min(1.0, 1.35 * lvl + 0.35 * kick + 0.2 * self.bed))
-            reach = td.reach.step(target, dt, omega, 0.42, 0.45)
+            td.level = follow(td.level, self._level_at(td.root), dt, REACH_RISE, REACH_FALL)
+            lvl = td.level
+            target = td.hfac * (0.50 + 0.50 * min(1.0, 1.35 * lvl + 0.30 * self.swell + 0.2 * self.bed))
+            reach = td.reach.step(target, dt, omega, 0.55, 0.5)
             td.glow = min(1.0, 0.35 + 0.9 * lvl + 0.6 * self.flash)
             length = max(4.0, reach * full)
             r0 = td.thick * min(26.0, max(2.6, 0.046 * full * td.hfac))   # a body with some heft…
+            # Its own clock: the shared speed, ±18 % on a slow drift.
+            td.clock += step * (1.0 + 0.18 * sin(TWO_PI * td.tempo_f * now + td.tempo_p))
+            T = td.clock
             # Segments shorten towards the tip, where the curl bends hardest,
             # so even a tight hook stays smooth.
-            theta = math.pi / 2.0 + td.lean + 0.22 * wild * math.sin(0.6 * T * td.w2 + td.p3)
+            theta = math.pi / 2.0 + td.lean + 0.22 * wild * sin(0.6 * T * td.w2 + td.p3)
             x, y = td.root, 0.0
             pts = [(x, y)]
             radii = [r0 + 0.55]
             t1, t2 = T * 2.2 * td.w1, -T * 1.7 * td.w2
-            a1, a2 = td.a1 * wild, td.a2 * wild
+            # The waves breathe: each swells and fades on its own slow cycle.
+            a1 = td.a1 * wild * (0.78 + 0.22 * sin(TWO_PI * td.b1_f * now + td.p1))
+            a2 = td.a2 * wild * (0.70 + 0.30 * sin(TWO_PI * td.b2_f * now + td.p2))
             hook = td.curl_dir * td.curl * hook_gain
             whip = lash_turn[td.delay] if lash_turn else None
             ph1, ph2 = td.ph1, td.ph2
