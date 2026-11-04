@@ -226,5 +226,14 @@ void main() {
 
     // Premultiplied: the liquid is opaque; the glow only adds light.
     vec3 rgb = liquid * cover + glowCol * (1.0 - cover);
-    fragColor = vec4(rgb, cover) * qt_Opacity;
+    // Valid premultiplied output (rgb <= alpha). Added light used to be written
+    // with zero alpha, which blends fine inside Qt, but KWin's color pipeline
+    // un-premultiplies every window pixel (rgb / max(a, 0.001)), converts it and
+    // multiplies by alpha again, so zero-alpha light comes out as nothing on the
+    // real screen (screenshots skip that step and still show it). Raising alpha
+    // to the brightest channel is the most additive blend that survives it: on
+    // a dark wallpaper it looks the same; on a bright one the light covers a
+    // little instead of adding on top.
+    rgb = min(rgb, vec3(1.0));
+    fragColor = vec4(rgb, max(cover, max(rgb.r, max(rgb.g, rgb.b)))) * qt_Opacity;
 }

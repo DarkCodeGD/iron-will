@@ -323,5 +323,15 @@ void main() {
     bubble(p16, s, acc); bubble(p17, s, acc); bubble(p18, s, acc); bubble(p19, s, acc);
     bubble(p20, s, acc); bubble(p21, s, acc); bubble(p22, s, acc); bubble(p23, s, acc);
 
+    // Valid premultiplied output (rgb <= alpha). Added light used to be written
+    // with zero alpha, which blends fine inside Qt, but KWin's color pipeline
+    // un-premultiplies every window pixel (rgb / max(a, 0.001)), converts it and
+    // multiplies by alpha again, so zero-alpha light comes out as nothing on the
+    // real screen (screenshots skip that step and still show it). Raising alpha
+    // to the brightest channel is the most additive blend that survives it: on
+    // a dark wallpaper it looks the same; on a bright one the light covers a
+    // little instead of adding on top.
+    acc = min(acc, vec4(1.0));
+    acc.a = max(acc.a, max(acc.r, max(acc.g, acc.b)));
     fragColor = acc * qt_Opacity;
 }

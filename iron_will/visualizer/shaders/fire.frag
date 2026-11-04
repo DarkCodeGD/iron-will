@@ -284,9 +284,10 @@ void main() {
     float peak = hotness * hotness * hotness * hotness;   // only the very hottest spots
     rgb += col * flame * peak * glowAmt * (0.10 + 0.18 * heat);
 
-    // Halo and aura are pure additive light (zero alpha): they can only
-    // brighten the wallpaper. Blending faint orange the normal way mixes it
-    // into muddy brown around every tongue. The halo uses the tip color
+    // Halo and aura are added light (no coverage here; the last step gives
+    // them just the alpha KWin needs): they only brighten the wallpaper.
+    // Blending faint orange the normal way mixes it into muddy brown around
+    // every tongue. The halo uses the tip color
     // (crimson in the Ascend palette): faded crimson reads as wine.
     rgb += tipColor.rgb * halo;
     rgb += auraCol * aura;
@@ -301,5 +302,15 @@ void main() {
     rgb = rgb * (1.0 - speck * 0.9) + emberHot * speck * 1.25 + emberWarm * haze * 0.35;
     a = a + (1.0 - a) * (speck * 0.9 + haze * 0.30);
 
+    // Valid premultiplied output (rgb <= alpha). Added light used to be written
+    // with zero alpha, which blends fine inside Qt, but KWin's color pipeline
+    // un-premultiplies every window pixel (rgb / max(a, 0.001)), converts it and
+    // multiplies by alpha again, so zero-alpha light comes out as nothing on the
+    // real screen (screenshots skip that step and still show it). Raising alpha
+    // to the brightest channel is the most additive blend that survives it: on
+    // a dark wallpaper it looks the same; on a bright one the light covers a
+    // little instead of adding on top.
+    rgb = min(rgb, vec3(1.0));
+    a = max(min(a, 1.0), max(rgb.r, max(rgb.g, rgb.b)));
     fragColor = vec4(rgb, a) * qt_Opacity;
 }
