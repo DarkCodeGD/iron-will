@@ -17,7 +17,7 @@ Spectrum modes on the GPU (bars, mirror, wave)
 These used to be painted here with QPainter: a full-window raster plus a
 window-sized texture upload every frame, up to a whole CPU core at full
 screen height. Now the item only runs the physics and packs the bar heights
-and peaks into a tiny ``SpectrumTexture`` (``spectrum.py``, n × 2 texels).
+and peaks into a tiny ``DataTexture`` (``datatex.py``, n × 2 texels).
 One shared shader (``shaders/spectrum.frag``) draws all three from it, with
 the same geometry as the painter below. The painter stays as the fallback for
 a software scene graph. Properties for that shader: ``spectrumActive``,
@@ -38,6 +38,8 @@ through one generic set of properties the shader binds to (``gpu*``):
     gpuLook      analyzer.look       (QML adds the aspect ratio as w)
     gpuColorA–C  analyzer.palette
     gpuParam     analyzer.param
+    dataTex      analyzer.texture() — data modes (tendrils): a whole frame of
+                 numbers in the shared DataTexture (layout in the analyzer)
     gpuParticles analyzer.particles() — object modes only (bubbles): up to
                  PARTICLE_SLOTS vec4s, flattened; QML unpacks them into
                  uniforms p0…p23. Empty slots are zeros.
@@ -65,10 +67,11 @@ from .. import config, presets
 from .demo import DemoSignal
 from .bubbles import PARTICLE_SLOTS, BubbleAnalyzer
 from .ferro import FerroAnalyzer
+from .tendrils import TendrilAnalyzer
 from .fire import FireAnalyzer
 from .modes import BY_ID, SPECTRUM_MODE_IDS, SPECTRUM_SHADER
 from .physics import BarPhysics
-from .spectrum import SpectrumTexture
+from .datatex import DataTexture, pack
 
 LOUD_THRESHOLD = 0.02   # a frame above this counts as "audio is playing"
 FADE_TAU = 0.35         # seconds — fade in/out time constant
@@ -78,7 +81,8 @@ SHADER_DIR = Path(__file__).resolve().parent / "shaders"
 log = logging.getLogger("iron_will.visualizer")
 
 # GPU mode id → analyzer class (each follows the contract in fire.py / ferro.py).
-GPU_ANALYZERS = {"fire": FireAnalyzer, "ferro": FerroAnalyzer, "bubbles": BubbleAnalyzer}
+GPU_ANALYZERS = {"fire": FireAnalyzer, "ferro": FerroAnalyzer, "bubbles": BubbleAnalyzer,
+                 "tendrils": TendrilAnalyzer}
 _NO_PARTICLES = [0.0] * (4 * PARTICLE_SLOTS)
 SPECTRUM_STOPS = 6   # color uniforms in spectrum.frag (config.MAX_COLOR_STOPS)
 
@@ -113,7 +117,7 @@ class VisualizerItem(QQuickPaintedItem):
         self._analyzers: dict = {}    # GPU mode id → analyzer, created on first use
         self._gpu = None              # the current mode's analyzer (None for CPU modes)
         self._gpu_fallback = False
-        self._spectrum: SpectrumTexture | None = None   # set from QML (qml/Visualizer.qml)
+        self._spectrum: DataTexture | None = None   # set from QML (qml/Visualizer.qml); every data mode shares it
         self._particle_flat = list(_NO_PARTICLES)
         self._cfg = config.defaults()
         self._colors: list[str] = list(self._cfg["visualizer.colors"])
@@ -352,6 +356,8 @@ class VisualizerItem(QQuickPaintedItem):
         if gpu:
             if hasattr(self._gpu, "particles"):
                 self._publish_particles()
+            if hasattr(self._gpu, "texture") and self._spectrum is not None:
+                self._spectrum.upload(*self._gpu.texture())   # data modes (tendrils): one small texture
             self.gpuFrame.emit()  # the shader redraws; nothing to paint here
             self.fadeChanged.emit()
             # GPU modes keep moving through silence (fire's pilot light, the
@@ -377,7 +383,8 @@ class VisualizerItem(QQuickPaintedItem):
 
     def _upload_spectrum(self) -> None:
         if self._is_spectrum_gpu():
-            self._spectrum.upload(*self._spectrum_values())
+            values, peaks = self._spectrum_values()
+            self._spectrum.upload(pack(values) + pack(peaks), max(1, len(values)), 2)
 
     # ── painting (software fallback) ──────────────────────────────────────
     def _get_brush(self, w: float, h: float, up: bool) -> QBrush:
@@ -491,9 +498,9 @@ class VisualizerItem(QQuickPaintedItem):
 
 
 def register_qml_types() -> None:
-    """``VisualizerItem`` (clock, physics, software painter), ``SpectrumTexture``
-    (its data for the spectrum shader) and ``Visualizer`` (the component windows
+    """``VisualizerItem`` (clock, physics, software painter), ``DataTexture``
+    (per-frame data for the shaders) and ``Visualizer`` (the component windows
     and the preview use: all of that plus the shaders)."""
     qmlRegisterType(VisualizerItem, QML_URI, 1, 0, "VisualizerItem")
-    qmlRegisterType(SpectrumTexture, QML_URI, 1, 0, "SpectrumTexture")
+    qmlRegisterType(DataTexture, QML_URI, 1, 0, "DataTexture")
     qmlRegisterType(QUrl.fromLocalFile(str(QML_DIR / "Visualizer.qml")), QML_URI, 1, 0, "Visualizer")

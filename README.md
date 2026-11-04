@@ -29,7 +29,7 @@
 
 - <img src="docs/icons/music.svg" width="18" height="18" alt=""> **Session sounds:** plays a random track from your music folder when you log in, wake your laptop, or unlock the screen.
 - <img src="docs/icons/bars.svg" width="18" height="18" alt=""> **Desktop visualizer:** music bars that sit on your desktop, right above the panel. They never get in the way of your windows or your clicks.
-- <img src="docs/icons/flame.svg" width="18" height="18" alt=""> **Six styles:** bars, wave, mirror, fire, ferrofluid and bubbles.
+- <img src="docs/icons/flame.svg" width="18" height="18" alt=""> **Seven styles:** bars, wave, mirror, fire, ferrofluid, bubbles and void tendrils.
 - <img src="docs/icons/sliders.svg" width="18" height="18" alt=""> **Genre presets:** one click tunes the motion for metal, phonk, electronic, hip-hop, calm music and more.
 - <img src="docs/icons/pause.svg" width="18" height="18" alt=""> **Stays out of the way:** the visualizer fades out when the music stops, waits behind the lock screen, and pauses while a fullscreen game, a video or a maximized window covers it.
 - <img src="docs/icons/app.svg" width="18" height="18" alt=""> **Settings app:** change anything with sliders and switches, and watch the visualizer update live.
@@ -45,6 +45,10 @@
 | <img src="docs/images/desktop-bars.jpg" alt="Bars mode"> | <img src="docs/images/desktop-wave.jpg" alt="Wave mode"> | <img src="docs/images/desktop-mirror.jpg" alt="Mirror mode"> |
 | **Fire** | **Ferrofluid** | **Bubbles** |
 | <img src="docs/images/desktop-fire.jpg" alt="Fire mode"> | <img src="docs/images/desktop-ferro.jpg" alt="Ferrofluid mode"> | <img src="docs/images/desktop-bubbles.jpg" alt="Bubbles mode"> |
+
+**Void Tendrils**
+
+<img src="docs/images/desktop-tendrils.jpg" alt="Void Tendrils mode">
 
 ## Install
 

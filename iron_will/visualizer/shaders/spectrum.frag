@@ -4,7 +4,7 @@
 // The CPU painter (VisualizerItem.paint in renderer.py) rasterised every bar
 // with QPainter and uploaded a window-sized image each frame: up to a whole
 // CPU core at full screen height. This shader draws the same picture from a
-// tiny data texture instead (visualizer/spectrum.py):
+// tiny data texture instead (visualizer/datatex.py):
 //
 //   spectrum   n × 2 texels: row 0 = bar heights, row 1 = peak caps, each a
 //              16-bit value in R (high byte) and G (low byte), 0..1

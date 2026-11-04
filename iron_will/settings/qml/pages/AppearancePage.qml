@@ -6,7 +6,7 @@ PageScaffold {
     id: page
     title: "Appearance"
     subtitle: "Style and colors of the desktop visualizer. Changes apply live to your desktop."
-    resetSections: ["visualizer", "fire", "ferro", "bubbles"]
+    resetSections: ["visualizer", "fire", "ferro", "bubbles", "tendrils"]
 
     readonly property int rev: backend.revision
     readonly property string mode: { rev; return backend.get("visualizer.mode") }
@@ -14,12 +14,14 @@ PageScaffold {
     readonly property bool fire: mode === "fire"
     readonly property bool ferro: mode === "ferro"
     readonly property bool bubbles: mode === "bubbles"
-    readonly property bool gpu: fire || ferro || bubbles   // drawn by a shader: bar-shape controls don't apply
+    readonly property bool tendrils: mode === "tendrils"
+    readonly property bool gpu: fire || ferro || bubbles || tendrils   // drawn by a shader: bar-shape controls don't apply
     readonly property bool bars: mode === "bars" || mode === "mirror"
     readonly property bool fullHeight: { rev; return backend.get("layout.full_height") }
     readonly property bool naturalFire: { rev; return backend.get("fire.palette") === "natural" }
     readonly property bool chromeFerro: { rev; return backend.get("ferro.palette") === "chrome" }
     readonly property string bubblePalette: { rev; return backend.get("bubbles.palette") }
+    readonly property string tendrilPalette: { rev; return backend.get("tendrils.palette") }
 
     PreviewCard {}
 
@@ -229,12 +231,68 @@ PageScaffold {
     }
 
     Card {
+        title: "Void Tendrils"
+        subtitle: "How the tendrils writhe, whip and bleed void essence"
+        iconName: "tendril"
+        visible: page.tendrils
+
+        HeightHint { what: "Void Tendrils"; icon: "tendril" }
+
+        SegmentedRow {
+            key: "tendrils.palette"; label: "Void colors"
+            description: page.tendrilPalette === "void" ? "Magenta rims, violet glow fading to deep purple"
+                       : page.tendrilPalette === "ember" ? "Hot orange rims, glow cooling to crimson"
+                       : "Your gradient: rim and essence from the first color, the far glow from the last"
+            labels: ({ void: "Void", ember: "Ember", colors: "Your colors" })
+        }
+        Divider {}
+        SliderRow {
+            key: "tendrils.reach"; label: "Reach"; decimals: 2
+            description: page.fullHeight ? "How much of the screen the tallest tendrils reach at full blast"
+                                         : "How much of the visualizer the tallest tendrils reach at full blast. Turn on Full screen height in Layout to let them rise up the screen."
+            format: function (v) { return Math.round(v * 100) + "%" }
+        }
+        SliderRow {
+            key: "tendrils.writhe"; label: "Writhe"; decimals: 2
+            description: "Base writhing speed. Loud, busy music makes them squirm faster."
+            format: function (v) { return v.toFixed(1) + "×" }
+        }
+        SliderRow {
+            key: "tendrils.count"; label: "Tendrils"; decimals: 2
+            description: "A few big tendrils or a dense thicket. Wider screens grow more."
+            format: function (v) { return v < 0.3 ? "A few" : v < 0.7 ? "A nest" : "A thicket" }
+        }
+        SliderRow {
+            key: "tendrils.curl"; label: "Curl"; decimals: 2
+            description: "How tightly the tips hook over"
+            format: function (v) { return v < 0.005 ? "Straight" : v < 0.4 ? "Loose" : v < 0.8 ? "Hooked" : "Coiled" }
+        }
+        SliderRow {
+            key: "tendrils.lash"; label: "Lash"; decimals: 2
+            description: "How hard every kick whips the tendrils. At 0 they only writhe."
+            format: function (v) { return v < 0.005 ? "Off" : Math.round(v * 100) + "%" }
+        }
+        SliderRow {
+            key: "tendrils.essence"; label: "Void essence"; decimals: 2
+            description: "Motes torn off the tips by snare and cymbal hits. They swirl and fade, and some get pulled back in."
+            format: function (v) { return v < 0.005 ? "Off" : Math.round(v * 100) + "%" }
+        }
+        SliderRow {
+            key: "tendrils.glow"; label: "Glow"; decimals: 2
+            description: "The rim light and aura hugging each tendril. Keeps the black tendrils visible on dark wallpapers."
+            format: function (v) { return v < 0.005 ? "Off" : Math.round(v * 100) + "%" }
+        }
+    }
+
+    Card {
         title: "Color"
         subtitle: page.fire && page.naturalFire ? "Natural fire uses its own colors. Pick \u201cYour colors\u201d in the Fire card to use these."
                 : page.ferro && page.chromeFerro ? "Chrome uses its own colors. Pick \u201cYour colors\u201d in the Ferrofluid card to use these."
                 : page.ferro ? "Ferrofluid lights the black liquid with these: rim from the first color, backlight from the last"
                 : page.bubbles && page.bubblePalette !== "colors" ? "Bubbles use their own soap-film colors. Pick \u201cYour colors\u201d in the Bubbles card to use these."
                 : page.bubbles ? "Bubbles shimmer between your first and last color around each rim"
+                : page.tendrils && page.tendrilPalette !== "colors" ? "Void Tendrils use their own colors. Pick \u201cYour colors\u201d in the Void Tendrils card to use these."
+                : page.tendrils ? "Void Tendrils glow with these: rim and essence from the first color, the far glow from the last"
                 : "Follow your Plasma accent, or build your own gradient"
         iconName: "palette"
 

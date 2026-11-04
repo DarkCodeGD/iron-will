@@ -44,6 +44,9 @@ MODES: tuple[RenderMode, ...] = (
     RenderMode("bubbles", "Bubbles",
                "Rainbow soap bubbles: kicks blow big ones, guitars keep them coming, snares pop them",
                "bubbles.svg", noun="bubbles", shader="bubbles.frag.qsb"),
+    RenderMode("tendrils", "Void Tendrils",
+               "Shadowy tendrils writhe with the music, whip on every kick and bleed void essence",
+               "tendrils.svg", noun="tendrils", shader="tendrils.frag.qsb"),
 )
 
 MODE_IDS: tuple[str, ...] = tuple(m.id for m in MODES)
@@ -51,7 +54,7 @@ MODE_IDS: tuple[str, ...] = tuple(m.id for m in MODES)
 GPU_MODE_IDS: frozenset[str] = frozenset(m.id for m in MODES if m.shader)
 # Modes that draw the classic spectrum (one value per bar, bar_count bars).
 # They render on the GPU too, all through one shader fed a data texture
-# (visualizer/spectrum.py); only a software scene graph paints them on the CPU.
+# (visualizer/datatex.py); only a software scene graph paints them on the CPU.
 SPECTRUM_MODE_IDS: frozenset[str] = frozenset(MODE_IDS) - GPU_MODE_IDS
 SPECTRUM_SHADER = "spectrum.frag.qsb"
 BY_ID: dict[str, RenderMode] = {m.id: m for m in MODES}

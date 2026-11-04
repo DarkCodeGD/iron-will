@@ -37,7 +37,7 @@
   <img src="images/desktop.jpg" alt="Iron Will visualizer running on a KDE Plasma 6 desktop, sitting just above the panel">
 </p>
 
-Six render modes, all anchored right above the Plasma panel and click-through:
+Seven render modes, all anchored right above the Plasma panel and click-through:
 
 | | |
 |---|---|
@@ -47,6 +47,7 @@ Six render modes, all anchored right above the Plasma panel and click-through:
 | **Fire** · GPU flames that surge on every kick (see [Fire mode](#fire-mode)) | <img src="images/desktop-fire.jpg" alt="Fire mode"> |
 | **Ferrofluid** · glossy black magnetic liquid the bass pulls into spikes (see [Ferrofluid mode](#ferrofluid-mode)) | <img src="images/desktop-ferro.jpg" alt="Ferrofluid mode"> |
 | **Bubbles** · rainbow soap bubbles that float up, wobble and pop to the beat (see [Bubbles mode](#bubbles-mode)) | <img src="images/desktop-bubbles.jpg" alt="Bubbles mode"> |
+| **Void Tendrils** · black tendrils that writhe with the music, whip on every kick and bleed void essence (see [Void Tendrils mode](#void-tendrils-mode)) | <img src="images/desktop-tendrils.jpg" alt="Void Tendrils mode"> |
 
 ## Fire mode
 
@@ -112,6 +113,25 @@ Bubbles rise faster the bigger they are, sway as they go, nudge each other aside
 - **Pops:** the film tears and snaps back, droplets spray out, and a little sparkle <img src="icons/sparkle.svg" width="14" height="14" alt="sparkle"> or a heart <img src="icons/heart.svg" width="14" height="14" alt="heart"> twinkles where the bubble was (**When they pop**). **Pops** sets how eagerly the snare pops them.
 - **Feel:** **Bubbles** (a few … bubble bath), **Size**, **Float speed**, **Wobble** (firm … jelly) and **Fizz**.
 - **Height:** they float through the whole visualizer, so give it some room (220–300 px) or turn on **Full screen height**. Hanging down from the top edge, they sink instead.
+- **No GPU?** On a software-rendered desktop, it falls back to bars.
+
+## Void Tendrils mode
+
+Shadowy tendrils rooted along the bottom edge, reaching up out of a dark mass: the eldritch one <img src="icons/tendril.svg" width="16" height="16" alt="tendrils">. It is deliberately not fire. There is no flame shader, no smoke and no fluid. Every tendril is its own creature with a solid black, tapering body, a hooked tip and a glow that hugs it. Some stand tall, some stay short and curly, and a second rank behind them glows through the gaps.
+
+| In the mix | In the tendrils |
+|---|---|
+| **Kick drum, bass** | a *lash*: a whip that runs up the tendrils from root to tip, in three quick waves across the nest |
+| **Rhythm guitars, vocals** | *reach*: each tendril stands over its own part of the spectrum and rises as that band gets loud |
+| **Overall loudness** | *writhing*: quiet passages sway slowly, a wall of sound makes them squirm |
+| **Snare, cymbals** | *void essence*: motes torn off the tips that swirl, fade, and sometimes get pulled back in |
+
+- **How a tendril moves:** each one is a spine of 16 segments. Its shape comes from bending, not from points moving around: every segment turns the heading a little, by two slow waves that grow toward the tip, the hook that curls the tip over, and any lash travelling up it. So a tendril can coil and whip, but it can never stretch, kink or break apart. Its reach rides on a spring, which makes it overshoot a hit and settle back.
+- **Drawing:** the CPU sends the shape to the shader as a small data texture (`visualizer/datatex.py`, the same one bars use): about 40 tendrils × 17 points plus 64 motes, re-sent every frame. The shader draws each tendril as a chain of tapered capsules (a distance field), so the body, the bright rim on the lit side, the violet sheath and the soft aura are all exact and antialiased. Each tendril has a bounding box, so a pixel only does the work for the tendrils near it.
+- **Colors:** *Void* (magenta rims, violet glow fading to deep purple), *Ember* (hot orange rims cooling to crimson; the glow fades through transparency, never through brown), or *Your colors* (rim and essence from your first gradient color, the far glow from the last). **Glow** sets how much light hugs the tendrils and keeps black bodies visible on dark wallpapers.
+- **Feel:** **Reach**, **Writhe** (speed), **Tendrils** (a few … a thicket; wider screens grow more), **Curl** (straight … coiled), **Lash** (0 = only writhing) and **Void essence**.
+- **Height:** tendrils need room to writhe. They come alive at about 250 px, and look best with **Full screen height**. Hanging down from the top edge, they reach down from above.
+- **Cost:** the shape is computed in Python, so it costs a little more CPU than fire (about 10% of a core vs 6% in testing, at a steady 60 fps).
 - **No GPU?** On a software-rendered desktop, it falls back to bars.
 
 ## Genre presets
@@ -250,7 +270,7 @@ Key design decisions:
 - **cava over a stdout pipe, not a FIFO.** No stale `/tmp` files and no blocking open handshake, and EOF tells us immediately if cava dies (it's restarted with backoff). cava runs under `setpriv --pdeathsig`, so even a SIGKILL'd visualizer can't leave an orphan.
 - **Asymmetric EMA physics.** Bars rise with a short time constant and fall with a long one, using `alpha = 1 − e^(−dt/τ)`, so motion looks the same at any frame rate. Peak caps hang, then fall with gravity.
 - **Zero cost when idle.** After the configured silence, the visualizer fades out and stops its render timer completely.
-- **Every mode draws on the GPU.** Bars, mirror and wave used to be painted with QPainter: a full-window raster and a window-sized texture upload every frame, a whole CPU core at full screen height (and only about 41 fps). Now the physics packs the bar heights and peak caps into a tiny texture (`visualizer/spectrum.py`: n × 2 texels, 16 bits per value across two channels), and one shader (`shaders/spectrum.frag`) draws all three from it: rounded bars and caps as signed distance fields, the wave as the same Catmull-Rom curve the painter used, all antialiased to one device pixel. In testing (1920 px wide, 1.25× scale, demo signal) that took bars and mirror from 39–42% of a core to 5% on the strip and from 103% to 5% at full height, now at a steady 60 fps; wave went from 16–31% to 5.5%. What's left is the physics clock every mode shares. Pixel comparisons against the old painter differ only in antialiasing. On a software-rendered desktop the painter still draws them.
+- **Every mode draws on the GPU.** Bars, mirror and wave used to be painted with QPainter: a full-window raster and a window-sized texture upload every frame, a whole CPU core at full screen height (and only about 41 fps). Now the physics packs the bar heights and peak caps into a tiny texture (`visualizer/datatex.py`: n × 2 texels, 16 bits per value across two channels), and one shader (`shaders/spectrum.frag`) draws all three from it: rounded bars and caps as signed distance fields, the wave as the same Catmull-Rom curve the painter used, all antialiased to one device pixel. In testing (1920 px wide, 1.25× scale, demo signal) that took bars and mirror from 39–42% of a core to 5% on the strip and from 103% to 5% at full height, now at a steady 60 fps; wave went from 16–31% to 5.5%. What's left is the physics clock every mode shares. Pixel comparisons against the old painter differ only in antialiasing. On a software-rendered desktop the painter still draws them.
 - **Survives suspend and hot-plug.** When an output disappears (suspend, lid close, unplugged monitor), the compositor closes the layer surface. Qt's default would then quit the app with a *clean* exit that `Restart=on-failure` ignores. Instead, a window guardian pauses rendering, and recovers in **one calm step** once the desktop has settled: it restarts cava (if we slept), then re-shows the bars with a fade-in, and moves them back to their home output when that returns. It detects the wake by watching `CLOCK_BOOTTIME − CLOCK_MONOTONIC` jump. Doing nothing for the first ~2.5 s after a wake matters, because that's when KWin, PipeWire and the network are all reconnecting at once.
 - **Nothing draws behind covering windows.** A Wayland client can't see other windows, so the visualizer loads a small KWin script (`visualizer/kwin/coverwatch.js`, stamped with its PID) over D-Bus. KWin calls back whenever the answer flips: do the windows stacked *above* the visualizer hide its whole rectangle? One geometric rule covers fullscreen, maximized, two windows tiled side by side, or a big window parked on top. Stacking order also respects `layout.layer`: on `top`, normal windows can't cover it. A window counts only while it's on screen: not minimized, on the current virtual desktop and activity, and not made translucent by KWin. Show Desktop comes from KWin's `showingDesktopChanged` signal. The guardian then treats "covered" like "locked": it pauses drawing and stops cava, and fades back in on fresh audio once uncovered. Pausing waits 0.5 s, so dragging a window across the bars doesn't restart cava; coming back takes about 0.25 s. The script is unloaded when the visualizer quits, and replaced if a crash left it behind. Toggle: *Motion → Pause when covered* (`motion.pause_when_covered`).
 - **Picking the GPU.** A process can't change GPUs once it has a graphics context, so `visualizer.gpu` is applied at startup (`visualizer/gpuselect.py`). The GPU list and the exact PRIME offload variables come from switcheroo-control, the same service behind Plasma's *Run using dedicated graphics card*; without it, `/sys/class/drm` and the well-known NVIDIA and `DRI_PRIME` variables are used. Changing the setting, or plugging in or unplugging in *When plugged in* mode (read from `/sys/class/power_supply`, debounced), makes the visualizer quit cleanly and `exec` itself on the other GPU. It keeps its PID, so systemd doesn't notice, and the switch takes about a third of a second. After the first frame it reads `GL_RENDERER` to see which GPU really draws, logs it, and writes `$XDG_RUNTIME_DIR/iron-will/gpu.json` for the Settings page. A safety net keeps a bad driver from taking the visualizer down: a marker is written before each start on the dedicated GPU and removed once a frame is drawn. If a start crashes (the marker is still there on the next one) or the driver hands over a software renderer, it falls back to the integrated GPU until you pick an option again or log in again. Keep in mind that while the visualizer runs on the dedicated GPU, that card can't power down, and every frame is copied back to the integrated GPU that drives the screen.
@@ -264,12 +284,12 @@ Key design decisions:
 iron_will/
   config.py  presets.py  paths.py  accent.py  util.py  qtcommon.py  gpus.py
   dispatcher/   player.py  daemon.py  notify.py  mpris.py  chime.py
-  visualizer/   modes.py  dynamics.py  fire.py  ferro.py  bubbles.py  cava.py  physics.py  demo.py  renderer.py  spectrum.py
+  visualizer/   modes.py  dynamics.py  fire.py  ferro.py  bubbles.py  tendrils.py  cava.py  physics.py  demo.py  renderer.py  datatex.py
                 layout.py  guardian.py  lockwatch.py  coverwatch.py  gpuselect.py  app.py  kwin/coverwatch.js
                 qml/{Visualizer.qml, WaylandWindow.qml, X11Window.qml}
-                shaders/{spectrum.frag, fire.frag, ferro.frag, bubbles.frag, *.frag.qsb, build.sh}
+                shaders/{spectrum.frag, fire.frag, ferro.frag, bubbles.frag, tendrils.frag, *.frag.qsb, build.sh}
   settings/     backend.py  icons.py  app.py  qml/{Main.qml, components/, pages/}
-  assets/iron-will.svg  assets/modes/{bars, mirror, wave, fire, ferro, bubbles}.svg
+  assets/iron-will.svg  assets/modes/{bars, mirror, wave, fire, ferro, bubbles, tendrils}.svg
 systemd/  desktop/  config/config.example.toml  install.sh  uninstall.sh
 ```
 
@@ -280,14 +300,16 @@ Render modes live in one registry, `iron_will/visualizer/modes.py`. Add a `Rende
 A GPU mode needs two more pieces, and nothing in the renderer or QML changes:
 
 1. **An analyzer** (Qt-free Python, registered in `GPU_ANALYZERS` in `renderer.py`) that turns spectrum frames into control signals. The hit detectors, springs and band helpers in `dynamics.py` are shared. It provides `apply(cfg, colors)`, `step(raw, dt)`, `reset()` and `settled()`, plus `columns` (16 values), `motion()` and `extra()` (4 values each, per frame), and `look`, `palette` (3 colors) and `param` (style).
-2. **A fragment shader** in `shaders/` (compile it with `build.sh`) that reads those through the generic uniform block: `colsA–D`, `motion`, `extra`, `look` (with the aspect ratio in `w`), `res` (size in pixels), `colorA–C` and `param`. Each shader gives the slots its own meaning; see `fire.frag` and `ferro.frag`. Keep it float-only: the GLSL ES 1.00 / 1.20 variants have no integer `clamp`/`min`/`max`.
+2. **A fragment shader** in `shaders/` (compile it with `build.sh`) that reads those through the generic uniform block: `colsA–D`, `motion`, `extra`, `look` (with the aspect ratio in `w`), `res` (size in pixels), `colorA–C` and `param`. Each shader gives the slots its own meaning; see `fire.frag` and `ferro.frag`. Keep it float-only: the GLSL ES 1.00 / 1.20 variants have no integer `clamp`/`min`/`max`. Output must be valid premultiplied color, with no channel above alpha. Glow written as light with zero alpha blends fine in a screenshot, but KWin's color pipeline un-premultiplies every window pixel and multiplies it back, so on the real screen that light vanishes. End with `alpha = max(alpha, max(r, g, b))`, as the existing shaders do.
 
 A mode made of separate objects (like bubbles) also gives its analyzer `particles()`, up to 24 `(x, y, size, state)` tuples per frame, and `resize(w, h)` if it simulates in pixels. The shader receives them as the uniforms `p0` … `p23` (an empty slot is all zeros); see `bubbles.py` and `bubbles.frag`.
+
+A mode that needs more than that (like void tendrils, with hundreds of points) gives its analyzer `texture()` instead, returning `(words, columns, rows)`: RGBA texels as 32-bit words, built with the helpers in `datatex.py` (a 16-bit value in R and G, an 8-bit extra in B, A always 255). The shader reads it as the sampler `dataTex` at binding 1, with its size in `res.zw` (GLSL ES 1.00 has no `textureSize`); see `tendrils.py` and `tendrils.frag`.
 
 ## Troubleshooting
 
 - **No bars?** Check `cava` is installed (System page), then look at `$XDG_RUNTIME_DIR/iron-will/cava.log`.
-- **Fire, ferrofluid or bubbles shows bars?** The desktop is rendering in software (no GPU shaders). The visualizer log says *"no GPU shaders"*.
+- **Fire, ferrofluid, bubbles or void tendrils shows bars?** The desktop is rendering in software (no GPU shaders). The visualizer log says *"no GPU shaders"*.
 - **Visualizer is a normal window on Wayland?** The LayerShellQt QML module is missing. Install `layer-shell-qt`.
 - **Two login sounds?** Turn off Plasma's own login sound in System Settings → Notifications → Plasma Workspace.
 - **No sound after resume?** Raise *Resume delay* in Session Sounds. The daemon also waits up to 10 s for the audio device.

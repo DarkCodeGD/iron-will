@@ -29,7 +29,7 @@ from ..dispatcher.player import (STOPPED, Player, list_tracks, now_playing, pick
 from ..visualizer import layout, modes
 from ..visualizer.gpuselect import status_file as gpu_status_file
 
-GPU_HEIGHT_KEYS = ("fire.height", "ferro.height")
+GPU_HEIGHT_KEYS = ("fire.height", "ferro.height", "tendrils.reach")
 
 log = logging.getLogger("iron_will.settings")
 

@@ -4,7 +4,7 @@
 
 # ── Visualizer · look ───────────────────────────────────────────
 [visualizer]
-# Render style — bars | mirror | wave | fire | ferro | bubbles
+# Render style — bars | mirror | wave | fire | ferro | bubbles | tendrils
 mode = "bars"
 # Number of bars / wave points — 8 … 256
 bar_count = 64
@@ -106,6 +106,25 @@ fizz = 0.5
 palette = "iridescent"
 # What a popping bubble leaves behind: little sparkles or hearts — sparkles | hearts
 pop_shape = "sparkles"
+
+# ── Visualizer · void tendrils mode ─────────────────────────────
+[tendrils]
+# How tall the tendrils reach at full blast (share of the visualizer's height) — 0.1 … 1
+reach = 0.85
+# How fast the tendrils writhe (the music speeds them up further) — 0.3 … 2.5
+writhe = 1.0
+# How many tendrils: a few big ones (0) or a dense thicket (1) — 0 … 1
+count = 0.5
+# How tightly the tips curl over into hooks — 0 … 1
+curl = 0.6
+# How hard each kick whips the tendrils (0 = no whip) — 0 … 1
+lash = 0.6
+# Void essence: motes torn off the tips by snare and cymbal hits (0 = none) — 0 … 1
+essence = 0.6
+# Rim light and the aura hugging each tendril; keeps the black tendrils visible on dark wallpapers — 0 … 1
+glow = 0.7
+# Colors: void purple, ember orange, or your gradient colors — void | ember | colors
+palette = "void"
 
 # ── Visualizer · placement on screen ────────────────────────────
 [layout]

@@ -4,7 +4,7 @@
 //                     the scene graph is software-only (then it's the CPU
 //                     fallback painter for every mode).
 //   spectrum shader — bars, mirror and wave: VisualizerItem packs the bar
-//                     heights into SpectrumTexture (n × 2 texels, hidden),
+//                     heights into a DataTexture (n × 2 texels, hidden),
 //                     ShaderEffectSource hands that to spectrum.frag.
 //   analyzer shader — fire, ferrofluid, bubbles: the mode's own fragment
 //                     shader (named by the mode registry), bound to the gpu*
@@ -19,9 +19,9 @@ Item {
     property alias store: vis.store
     property alias demo: vis.demo
 
-    // The bar heights as a texture. Never shown: ShaderEffectSource renders it
-    // off-screen, at exactly one texel per value (see visualizer/spectrum.py).
-    SpectrumTexture {
+    // Per-frame data for the shaders (bar heights, tendril spines…). Never shown: ShaderEffectSource renders it
+    // off-screen, at exactly one texel per value (see visualizer/datatex.py).
+    DataTexture {
         id: spectrumData
         visible: false
     }
@@ -63,7 +63,7 @@ Item {
         property color c5: vis.spectrumColors[5]
     }
 
-    // Fire, ferrofluid, bubbles.
+    // Fire, ferrofluid, bubbles, void tendrils.
     ShaderEffect {
         anchors.fill: parent
         visible: vis.visible && vis.gpuActive && vis.gpuShader !== "" && vis.gpuOpacity > 0.003
@@ -81,7 +81,8 @@ Item {
         property vector4d extra: vis.gpuExtra
         property vector4d look: Qt.vector4d(vis.gpuLook.x, vis.gpuLook.y, vis.gpuLook.z,
                                             width / Math.max(1, height))
-        property vector4d res: Qt.vector4d(width, height, 0, 0)   // item size in pixels
+        property vector4d res: Qt.vector4d(width, height, spectrumData.width, spectrumData.height)  // item px; data texture size
+        property var dataTex: spectrumSource   // data modes (tendrils); other shaders don't declare it
         property color colorA: vis.gpuColorA
         property color colorB: vis.gpuColorB
         property color colorC: vis.gpuColorC
