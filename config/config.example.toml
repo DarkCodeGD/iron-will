@@ -26,6 +26,8 @@ gradient_direction = "vertical"
 peaks = true
 # Frames per second (also cava's analysis rate) — 24 … 165
 fps = 60
+# Graphics card that draws the visualizer, on laptops with two: integrated (saves battery), dedicated, or plugged_in (dedicated only while on AC power) — integrated | dedicated | plugged_in
+gpu = "integrated"
 
 # ── Visualizer · motion & physics ───────────────────────────────
 [motion]

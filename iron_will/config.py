@@ -140,6 +140,10 @@ FIELDS: tuple[Field, ...] = (
     Field("visualizer", "gradient_direction", "vertical", "Gradient axis", choices=("horizontal", "vertical")),
     Field("visualizer", "peaks", True, "Draw falling peak caps above bars"),
     Field("visualizer", "fps", 60, "Frames per second (also cava's analysis rate)", 24, 165),
+    Field("visualizer", "gpu", "integrated",
+          "Graphics card that draws the visualizer, on laptops with two: integrated (saves battery), "
+          "dedicated, or plugged_in (dedicated only while on AC power)",
+          choices=("integrated", "dedicated", "plugged_in")),
     # Fire mode
     Field("fire", "height", 0.9, "How tall the flames reach at full blast (share of the visualizer's height)", 0.1, 1.0),
     Field("fire", "intensity", 1.0, "How hard the music drives the fire", 0.3, 2.0),

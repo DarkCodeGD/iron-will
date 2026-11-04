@@ -7,6 +7,7 @@ Data flow::
                                    └─ cava keys? ──▶ CavaProcess.restart
     PipeWire ──▶ cava (stdout pipe) ──frame──▶ VisualizerItem.feed ──▶ paint
     suspend / output loss / lock / covering windows ──▶ WindowGuardian ──▶ pause, then re-show + restart cava
+    visualizer.gpu / AC power ──▶ GpuSupervisor ──▶ quit + exec self on the other GPU
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from .. import config
 from ..qtcommon import ConfigStore, install_signal_handlers
 from ..util import acquire_lock, setup_logging
+from . import gpuselect
 from .cava import CavaProcess
 from .coverwatch import CoverWatcher
 from .guardian import Hooks, WindowGuardian
@@ -48,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
         log.error("the visualizer is already running")
         return EXIT_ALREADY_RUNNING
     config.ensure_exists()
+    gpu = gpuselect.choose()   # sets the GPU environment, so it must come before any Qt GUI
 
     app = QGuiApplication(sys.argv if argv is None else argv)
     app.setApplicationName("iron-will-visualizer")
@@ -77,6 +80,7 @@ def main(argv: list[str] | None = None) -> int:
         log.error("could not create the visualizer window")
         return 1
     log.info("visualizer window up (%s)", mode)
+    supervisor = gpuselect.GpuSupervisor(gpu, root, store, parent=app)
 
     item = root.findChild(VisualizerItem, "visualizer")
     cava = CavaProcess(app)
@@ -114,4 +118,6 @@ def main(argv: list[str] | None = None) -> int:
     guardian.setObjectName("guardian")
     app.aboutToQuit.connect(cava.stop)
     app.aboutToQuit.connect(cover.shutdown)
-    return app.exec()
+    code = app.exec()
+    supervisor.relaunch_if_requested(lock)   # GPU choice changed: exec ourselves (no return)
+    return code

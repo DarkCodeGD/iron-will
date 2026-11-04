@@ -12,7 +12,9 @@ the file, so tweaking a slider updates your desktop live.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import shutil
 from pathlib import Path
 
@@ -21,10 +23,11 @@ from PySide6.QtCore import (Property, QFileSystemWatcher, QLibraryInfo, QObject,
 from PySide6.QtGui import QDesktopServices, QGuiApplication
 from PySide6.QtQml import QJSValue
 
-from .. import __version__, config, paths, presets
+from .. import __version__, config, gpus, paths, presets
 from ..dispatcher.player import (STOPPED, Player, list_tracks, now_playing, pick_track, request_stop,
                                 resolve_chain)
 from ..visualizer import layout, modes
+from ..visualizer.gpuselect import status_file as gpu_status_file
 
 GPU_HEIGHT_KEYS = ("fire.height", "ferro.height")
 
@@ -41,6 +44,7 @@ class SettingsBackend(QObject):
     dirtyChanged = Signal()
     servicesChanged = Signal()
     nowPlayingChanged = Signal()
+    gpuChanged = Signal()
     toast = Signal(str, str)  # message, kind ("info" | "error")
 
     def __init__(self, store, parent: QObject | None = None) -> None:
@@ -51,11 +55,14 @@ class SettingsBackend(QObject):
         self._player = Player()
         self._services: list[dict] = []
         self._now_playing = ""
+        self._gpus: list[gpus.Gpu] | None = None   # detected once, on first use
+        self._gpu: dict = {}
         # Any process (daemon, CLI, this app) creating/removing playback.json
         # shows up here instantly; the debounce lets the flock settle first.
         self._playing_watch = QFileSystemWatcher([str(paths.runtime_dir())], self)
         self._playing_debounce = QTimer(self, singleShot=True, interval=120)
         self._playing_debounce.timeout.connect(self._refresh_now_playing)
+        self._playing_debounce.timeout.connect(self._refresh_gpu)        # gpu.json lives there too
         self._playing_watch.directoryChanged.connect(lambda _p: self._playing_debounce.start())
         store.changed.connect(self._on_store_changed)
         store.saved.connect(self._on_saved)
@@ -63,9 +70,11 @@ class SettingsBackend(QObject):
         self._service_timer.setInterval(3000)
         self._service_timer.timeout.connect(self.refreshServices)
         self._service_timer.timeout.connect(self._refresh_now_playing)  # belt and braces
+        self._service_timer.timeout.connect(self._refresh_gpu)          # notices a dead visualizer
         self._service_timer.start()
         self.refreshServices()
         self._refresh_now_playing()
+        self._refresh_gpu()
 
     # ── generic settings access ───────────────────────────────────────────
     def _get_revision(self) -> int:
@@ -290,6 +299,37 @@ class SettingsBackend(QObject):
 
         proc.finished.connect(finished)
         proc.start("systemctl", ["--user", action, "--now", unit])
+
+    # ── graphics card ─────────────────────────────────────────────────────
+    def _refresh_gpu(self) -> None:
+        """What GPUs exist, and which one the running visualizer really draws on."""
+        if self._gpus is None:
+            self._gpus = gpus.detect()
+        dgpu, igpu = gpus.dedicated(self._gpus), gpus.integrated(self._gpus)
+        status = self._visualizer_gpu_status()
+        info = {
+            "available": dgpu is not None,
+            "dedicated": dgpu.name if dgpu else "",
+            "integrated": igpu.name if igpu else "integrated GPU",
+            "running": status is not None,
+            "renderer": (status or {}).get("renderer") or "",
+            "onDedicated": bool((status or {}).get("dedicated")),
+            "fallback": (status or {}).get("fallback") or "",
+        }
+        if info != self._gpu:
+            self._gpu = info
+            self.gpuChanged.emit()
+
+    @staticmethod
+    def _visualizer_gpu_status() -> dict | None:
+        try:
+            status = json.loads(gpu_status_file().read_text())
+            os.kill(int(status["pid"]), 0)     # still running? (no signal is sent)
+            return status
+        except (OSError, ValueError, KeyError, TypeError):
+            return None
+
+    gpu = Property("QVariantMap", lambda s: s._gpu, notify=gpuChanged)
 
     @Slot(result="QVariantList")
     def dependencies(self):

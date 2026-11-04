@@ -61,6 +61,59 @@ PageScaffold {
         }
     }
 
+    // Only on machines with a second, dedicated GPU (most gaming laptops).
+    Card {
+        id: gpuCard
+        readonly property var info: backend.gpu
+        visible: info.available === true
+        title: "Graphics card"
+        subtitle: "This computer has two GPUs. Pick the one that draws the visualizer."
+        iconName: "bolt"
+
+        SegmentedRow {
+            key: "visualizer.gpu"
+            label: "Draw the visualizer on"
+            description: "Integrated (" + gpuCard.info.integrated + ") saves battery. Dedicated ("
+                       + gpuCard.info.dedicated + ") is faster, but stays awake and uses more power while "
+                       + "the visualizer runs. When plugged in uses it on AC power only. "
+                       + "The visualizer restarts itself to switch."
+            labels: ({ integrated: "Integrated", dedicated: "Dedicated", plugged_in: "When plugged in" })
+        }
+
+        Divider {}
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 12
+            Chip {
+                filled: true
+                // Mint when healthy, either GPU (an orange tint reads brown on this surface).
+                accent: !gpuCard.info.running ? Theme.textMuted
+                      : gpuCard.info.fallback !== "" ? Theme.danger : Theme.success
+                text: !gpuCard.info.running ? "Not running"
+                    : gpuCard.info.renderer === "" ? "Starting"
+                    : gpuCard.info.onDedicated ? "Dedicated" : "Integrated"
+            }
+            Text {
+                Layout.fillWidth: true
+                text: !gpuCard.info.running ? "Start the visualizer to see which GPU it draws on."
+                    : gpuCard.info.renderer === "" ? "Waiting for the first frame…"
+                    : "Drawing on " + gpuCard.info.renderer
+                color: Theme.text
+                font.pixelSize: Theme.fontSmall
+                elide: Text.ElideRight
+            }
+        }
+        Text {
+            visible: gpuCard.info.fallback !== ""
+            Layout.fillWidth: true
+            text: gpuCard.info.fallback + " Using the integrated GPU for now; pick an option above to try again."
+            color: Theme.danger
+            font.pixelSize: Theme.fontSmall
+            wrapMode: Text.WordWrap
+        }
+    }
+
     Card {
         title: "Dependencies"
         subtitle: "What Iron Will needs on this machine"
