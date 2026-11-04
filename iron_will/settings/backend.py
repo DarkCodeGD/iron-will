@@ -225,6 +225,12 @@ class SettingsBackend(QObject):
     nowPlaying = Property(str, lambda s: s._now_playing, notify=nowPlayingChanged)
 
     @Slot()
+    def shutdown(self) -> None:
+        """App is quitting: take our own test sound down with us (the player is
+        also tied to us at the kernel level, this just makes it immediate)."""
+        self._player.stop()
+
+    @Slot()
     def stopSound(self) -> None:
         stopped = request_stop()
         if stopped:

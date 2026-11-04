@@ -167,3 +167,5 @@ backend = "auto"
 avoid_repeat = true
 # Show a notification with a Stop button while a session sound plays
 notify = true
+# Make way for music: skip the sound while a media player is playing, and stop it when one starts
+yield_to_media = true

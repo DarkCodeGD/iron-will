@@ -147,6 +147,10 @@ PageScaffold {
             key: "sounds.notify"; accent: page.tone; label: "Stop button notification"
             description: "Show a notification with a Stop button while a session sound plays"
         }
+        ToggleRow {
+            key: "sounds.yield_to_media"; accent: page.tone; label: "Make way for music"
+            description: "Skip the sound while Elisa, a browser or another player is playing, and stop it when you start one"
+        }
     }
 
     FolderDialog {

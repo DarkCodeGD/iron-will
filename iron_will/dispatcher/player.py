@@ -84,6 +84,21 @@ def build_command(backend: str, track: Path, volume: float) -> list[str]:
     raise ValueError(f"unknown backend {backend!r}")
 
 
+def tie_to_owner(cmd: list[str]) -> list[str]:
+    """Make the kernel SIGTERM the player if the thread that started it dies.
+
+    The playback lock dies with its owner, so a player child that outlived it
+    would be a sound nobody can see or stop (closing the settings app mid
+    test-sound used to do exactly that). ``setpriv --pdeathsig`` sets
+    PR_SET_PDEATHSIG and then execs the player in place (same PID, same argv
+    tail), so even a SIGKILLed owner takes its sound down with it. The worker
+    thread that spawns the child blocks in ``communicate()`` until the child
+    exits, so the "parent thread died" signal can't fire early.
+    """
+    setpriv = shutil.which("setpriv")
+    return [setpriv, "--pdeathsig", "TERM", "--", *cmd] if setpriv else cmd
+
+
 def resolve_chain(preferred: str = "auto") -> list[str]:
     """Installed backends in try-order, preferred one first."""
     available = [b for b in BACKENDS if shutil.which(b)]
@@ -161,15 +176,25 @@ def is_playing() -> bool:
 
 
 def now_playing() -> dict | None:
-    """``{"track", "event", "owner", ...}`` for the sound playing right now, else None."""
-    if not is_playing():
-        return None
+    """``{"track", "event", "owner", ...}`` for the sound playing right now, else None.
+
+    An *orphan* (a player child still running after its owner died without
+    taking it down, e.g. on a system without ``setpriv``) counts as playing
+    too, flagged ``"orphan": True``, so it can still be seen and stopped.
+    """
     state = _read_json(paths.runtime_dir() / STATE_FILE)
-    return state if state.get("track") else {"track": "", "event": ""}
+    if is_playing():
+        return state if state.get("track") else {"track": "", "event": ""}
+    child, track = state.get("child"), state.get("track", "")
+    if isinstance(child, int) and _is_player_process(child, track):
+        return {**state, "orphan": True}
+    return None   # nothing playing (a leftover state file from a dead owner is just ignored)
 
 
 def _is_player_process(pid: int, track: str) -> bool:
     """Guard against PID reuse: only signal a process whose argv has our track."""
+    if not track:   # b"" would match the empty field after argv's trailing NUL
+        return False
     try:
         argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
     except OSError:
@@ -186,7 +211,7 @@ def request_stop() -> str | None:
     if playing is None:
         return None
     token = playing.get("token")
-    if token:
+    if token and not playing.get("orphan"):   # an orphan's owner is gone; nobody reads the file
         _write_atomic(paths.runtime_dir() / STOP_FILE, token)
     child, track = playing.get("child"), playing.get("track", "")
     if isinstance(child, int) and _is_player_process(child, track):
@@ -270,7 +295,7 @@ class Player:
                     message = STOPPED
                     return
                 try:
-                    proc = subprocess.Popen(build_command(name, track, volume), stdin=subprocess.DEVNULL,
+                    proc = subprocess.Popen(tie_to_owner(build_command(name, track, volume)), stdin=subprocess.DEVNULL,
                                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                 except OSError as exc:
                     log.warning("%s could not start: %s", name, exc)

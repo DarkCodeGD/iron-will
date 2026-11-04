@@ -216,6 +216,8 @@ FIELDS: tuple[Field, ...] = (
     Field("sounds", "backend", "auto", "Audio player to use", choices=("auto", "pw-play", "paplay", "ffplay", "mpv")),
     Field("sounds", "avoid_repeat", True, "Never play the same track twice in a row"),
     Field("sounds", "notify", True, "Show a notification with a Stop button while a session sound plays"),
+    Field("sounds", "yield_to_media", True,
+          "Make way for music: skip the sound while a media player is playing, and stop it when one starts"),
 )
 
 FIELD_MAP: dict[str, Field] = {f.path: f for f in FIELDS}

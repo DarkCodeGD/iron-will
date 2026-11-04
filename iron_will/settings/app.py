@@ -42,6 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     store.watch_accent()
     store.enable_autosave()
     backend = SettingsBackend(store, app)
+    app.aboutToQuit.connect(backend.shutdown)
 
     engine = QQmlApplicationEngine()
     engine.addImageProvider("modeicon", ModeIconProvider())

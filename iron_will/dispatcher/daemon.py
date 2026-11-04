@@ -19,8 +19,11 @@ screen and the lock screen can flap ActiveChanged while the machine goes
 down, so unlocks are ignored there — otherwise a sound starts, freezes
 mid-suspend and plays on after wake (and eats the resume sound's cooldown).
 
-While a sound plays, a notification offers a Stop button; ``--stop`` (and the
-settings app) stop it from anywhere.
+While a sound plays, a notification offers a Stop button, and the sound shows
+up in Plasma's media controls (MPRIS) like any player, so the media widget,
+the lock screen and the media keys stop it too; ``--stop`` (and the settings
+app) stop it from anywhere. With ``sounds.yield_to_media`` it makes way for
+real music: no sound while a player is playing, and starting one stops it.
 
 Config is re-read on every event, so edits apply without a restart.
 """
@@ -39,6 +42,7 @@ from gi.repository import Gio, GLib
 
 from .. import config, paths
 from ..util import acquire_lock, setup_logging
+from .mpris import MediaPlayer, MediaWatcher
 from .notify import Notifier
 from .player import STOPPED, Player, list_tracks, now_playing, pick_track, request_stop
 
@@ -77,6 +81,8 @@ class Dispatcher:
         self._subscriptions: list[tuple[Gio.DBusConnection, int]] = []
         self._session: Gio.DBusConnection | None = None
         self._notifier: Notifier | None = None
+        self._media: MediaPlayer | None = None
+        self._watcher: MediaWatcher | None = None
         self._sleeping = False
         self._resume_waiting = False   # resumed behind the lock screen; play once unlocked
         # Is the screen locked? None = unknown (then any unlock signal counts).
@@ -96,6 +102,8 @@ class Dispatcher:
             None, None, Gio.DBusSignalFlags.NONE, self._on_screensaver)))
         self._session = session
         self._notifier = Notifier(session, on_stop=self._stop_playback)
+        self._media = MediaPlayer(session, on_stop=self._stop_playback)
+        self._watcher = MediaWatcher(session, on_started=self._on_other_player_started)
         self._sync_lock_state()
         log.info("listening for resume (logind) and unlock (ScreenSaver) events")
         if self._first_start_this_session():
@@ -108,6 +116,10 @@ class Dispatcher:
         self.player.stop()
         if self._notifier:
             self._notifier.shutdown()
+        if self._media:
+            self._media.shutdown()
+        if self._watcher:
+            self._watcher.shutdown()
 
     def _first_start_this_session(self) -> bool:
         marker = paths.runtime_dir() / "login-played"
@@ -217,6 +229,10 @@ class Dispatcher:
         if now - self._last_played < cfg["sounds.cooldown"]:
             log.info("%s: within the %ss cooldown — skipped", event, cfg["sounds.cooldown"])
             return GLib.SOURCE_REMOVE
+        busy = self._watcher.others_playing() if cfg["sounds.yield_to_media"] and self._watcher else []
+        if busy:
+            log.info("%s: %s is playing — making way for your music", event, _player_label(busy[0]))
+            return GLib.SOURCE_REMOVE
         directory = paths.expand(cfg["sounds.directory"])
         tracks = list_tracks(directory)
         if not tracks:
@@ -230,6 +246,8 @@ class Dispatcher:
             log.info("%s → %s", event, track.name)
             if cfg["sounds.notify"] and self._notifier:
                 self._notifier.show(track.stem, event)
+            if self._media:
+                self._media.show(track.stem, event, cfg["sounds.volume"])
         else:
             log.info("%s: a sound is already playing — skipped", event)
         return GLib.SOURCE_REMOVE
@@ -239,18 +257,36 @@ class Dispatcher:
         stopped = request_stop()
         if stopped:
             log.info("stopped %s", stopped)
+        self._hide_controls()
+
+    def _hide_controls(self) -> None:
         if self._notifier:
             self._notifier.close()
+        if self._media:
+            self._media.hide()
+
+    def _on_other_player_started(self, name: str) -> None:
+        """Another MPRIS player went to Playing (you started a song or a video)."""
+        if not (self._media and self._media.active):
+            return   # we aren't playing anything
+        if not config.load(fallback=True)["sounds.yield_to_media"]:
+            return
+        log.info("%s started playing — making way for your music", _player_label(name))
+        self._stop_playback()
 
     def _on_played(self, _ok: bool, message: str) -> None:
         # Player worker thread → hop onto the GLib loop before touching D-Bus state.
         def done() -> bool:
-            if self._notifier:
-                self._notifier.close()
+            self._hide_controls()
             if message == STOPPED:
                 log.info("playback stopped")
             return GLib.SOURCE_REMOVE
         GLib.idle_add(done)
+
+
+def _player_label(bus_name: str) -> str:
+    """``org.mpris.MediaPlayer2.elisa`` → ``elisa`` (browsers add ``.instance123``)."""
+    return bus_name.removeprefix("org.mpris.MediaPlayer2.").split(".instance")[0] or bus_name
 
 
 def play_once(event: str = "test") -> int:

@@ -21,7 +21,7 @@
   <img src="docs/images/visualizer.gif" width="760" alt="Animated visualizer in mirror mode">
 </p>
 
-- **Session sounds:** plays a random track from your library on **login**, **resume from suspend**, and **screen unlock**. A notification with a **Stop** button shows while it plays.
+- **Session sounds:** plays a random track from your library on **login**, **resume from suspend**, and **screen unlock**. A notification with a **Stop** button shows while it plays, the sound appears in Plasma's media controls like any player, and it makes way for your music.
 - **Waits for your password:** after waking up behind the lock screen, both the sound and the visualizer wait until you've unlocked, then start together.
 - **Desktop visualizer:** a click-through spectrum visualizer on the desktop layer, sitting right above your panel. It never steals focus and never covers windows.
 - **Genre presets:** one tap retunes the bounce physics and frequency range for metal, phonk, electronic, hip-hop, calm and more.
@@ -136,9 +136,15 @@ Not in the mood for the full track? Any of these stops it, no matter which part 
 | **Settings app** | The *Play random track* button turns into **Stop** while anything is playing |
 | **App menu** | Right-click *Iron Will* → **Stop session sound** |
 | **Keyboard shortcut** | System Settings → Keyboard → Shortcuts → *Add New* → *Application* → Iron Will, then bind *Stop session sound* |
+| **Media controls** | The sound shows up as *Iron Will* in Plasma's media player widget, on the lock screen and under your keyboard's media keys: **Pause** or **Stop** ends it |
+| **Start your music** | Hit play in Elisa, a browser video, Spotify or any other player and the sound steps aside (*Make way for music*, under *Session Sounds → Playback*) |
 | **Terminal** | `iron-will-audio --stop` |
 
 Going to sleep also stops the sound, so a track never freezes mid-song and plays on after you wake up.
+
+With *Make way for music* on, Iron Will also skips the sound entirely when you unlock (or wake up) while a player is already playing, so it never talks over your song.
+
+Whatever plays the sound, the player process is tied to it at the kernel level: if the settings app is closed mid test-sound, or something crashes, the sound goes down with it instead of playing on where nothing can reach it.
 
 ## Waking up
 
@@ -247,7 +253,7 @@ Key design decisions:
 ```
 iron_will/
   config.py  presets.py  paths.py  accent.py  util.py  qtcommon.py
-  dispatcher/   player.py  daemon.py  notify.py  chime.py
+  dispatcher/   player.py  daemon.py  notify.py  mpris.py  chime.py
   visualizer/   modes.py  dynamics.py  fire.py  ferro.py  bubbles.py  cava.py  physics.py  demo.py  renderer.py  layout.py
                 guardian.py  lockwatch.py  app.py
                 qml/{Visualizer.qml, WaylandWindow.qml, X11Window.qml}
