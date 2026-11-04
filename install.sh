@@ -131,8 +131,12 @@ EOF
 done
 ok "launchers → $BIN_DIR/iron-will-{settings,visualizer,audio}"
 
-for unit in "${UNITS[@]}"; do render "$SRC/systemd/$unit" "$UNIT_DIR/$unit"; done
-ok "systemd user units → $UNIT_DIR"
+for unit in "${UNITS[@]}"; do
+  render "$SRC/systemd/$unit" "$UNIT_DIR/$unit"
+  # Guaranteed fast stop at shutdown / reboot / logout (see systemd/fast-stop.conf).
+  render "$SRC/systemd/fast-stop.conf" "$UNIT_DIR/$unit.d/90-fast-stop.conf"
+done
+ok "systemd user units → $UNIT_DIR (3 s stop cap)"
 
 render "$SRC/desktop/iron-will-settings.desktop" "$APPS_DIR/iron-will-settings.desktop"
 run mkdir -p "$ICON_DIR"

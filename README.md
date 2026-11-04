@@ -146,6 +146,8 @@ With *Make way for music* on, Iron Will also skips the sound entirely when you u
 
 Whatever plays the sound, the player process is tied to it at the kernel level: if the settings app is closed mid test-sound, or something crashes, the sound goes down with it instead of playing on where nothing can reach it.
 
+**Shutdown and reboot never wait on Iron Will.** Both services stop in a few tens of milliseconds, mid-sound or not. As a guarantee, each unit gets a `90-fast-stop.conf` drop-in: SIGTERM goes to every Iron Will process at once, and anything still alive after 3 s is SIGKILLed. That's 3 s at worst instead of Fedora's default (a 45 s stop timeout, then SIGABRT, a core dump and up to another 45 s).
+
 ## Waking up
 
 Plasma locks the screen when the laptop goes to sleep, so the moment you're *really* back is when you type your password, not when the lid opens. Iron Will treats it that way:

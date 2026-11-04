@@ -28,7 +28,8 @@ run() { if (( DRY_RUN )); then printf '  [dry-run]'; printf ' %q' "$@"; echo; el
 echo "Removing Iron Will…"
 for unit in "${UNITS[@]}"; do
   [[ -f "$UNIT_DIR/$unit" ]] && run systemctl --user disable --now "$unit" 2>/dev/null || true
-  run rm -f "$UNIT_DIR/$unit"
+  run rm -f "$UNIT_DIR/$unit" "$UNIT_DIR/$unit.d/90-fast-stop.conf"
+  [[ -d "$UNIT_DIR/$unit.d" ]] && run rmdir --ignore-fail-on-non-empty "$UNIT_DIR/$unit.d" || true
 done
 run systemctl --user daemon-reload
 run rm -f "$BIN_DIR/iron-will-audio" "$BIN_DIR/iron-will-visualizer" "$BIN_DIR/iron-will-settings"
