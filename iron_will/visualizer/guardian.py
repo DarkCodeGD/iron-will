@@ -33,6 +33,11 @@ cava if we slept, then show the window, which fades in from zero.
 lock screen appeared"; you're only back once you've typed your password.
 While the screen is locked the visualizer is paused and cava is stopped,
 and the recovery step waits for the unlock.
+
+**Nothing runs behind covering windows either.** A fullscreen game or video,
+or a maximized window, hides the visualizer, so it gets the same treatment as
+the lock screen: paused, cava stopped, back (fading in on fresh audio) once
+it's uncovered.
 """
 
 from __future__ import annotations
@@ -53,6 +58,7 @@ SETTLE_MS = 1200           # act once screens/surfaces have been quiet this long
 WAKE_SETTLE_S = 2.5        # …and never sooner than this after a wake-up
 RETRY_BACKOFF_MS = (1000, 2000, 5000, 10000)  # still no output? poll gently
 UNLOCK_SETTLE_MS = 300     # after the password: come back promptly, the desktop is ready
+UNCOVER_SETTLE_MS = 100    # uncovered: the desktop is right there
 
 
 def _sleep_offset() -> float:
@@ -80,12 +86,14 @@ class Hooks:
 
 
 class WindowGuardian(QObject):
-    def __init__(self, window: QWindow, hooks: Hooks, lock=None, parent: QObject | None = None) -> None:
-        """*lock* is an optional LockWatcher (``.locked`` + ``changed(bool)``)."""
+    def __init__(self, window: QWindow, hooks: Hooks, lock=None, cover=None, parent: QObject | None = None) -> None:
+        """*lock* is an optional LockWatcher (``.locked`` + ``changed(bool)``),
+        *cover* an optional CoverWatcher (``.covered`` + ``changed(bool)``)."""
         super().__init__(parent)
         self._window = window
         self._hooks = hooks
         self._lock = lock
+        self._cover = cover
         self._quitting = False
         self._moving = False
         self._paused = False         # rendering paused by us
@@ -107,7 +115,9 @@ class WindowGuardian(QObject):
         app.primaryScreenChanged.connect(self._poke)
         window.visibleChanged.connect(self._on_visible_changed)
         if lock is not None:
-            lock.changed.connect(self._on_lock_changed)
+            lock.changed.connect(lambda locked: self._on_blocked_changed(locked, UNLOCK_SETTLE_MS))
+        if cover is not None:
+            cover.changed.connect(lambda covered: self._on_blocked_changed(covered, UNCOVER_SETTLE_MS))
 
         self._settle = QTimer(self, singleShot=True)
         self._settle.timeout.connect(self._settled)
@@ -117,8 +127,8 @@ class WindowGuardian(QObject):
 
     # ── public ────────────────────────────────────────────────────────────
     def request_audio_restart(self) -> None:
-        """Settings changed: restart cava now, or at unlock if we're locked."""
-        if self._locked():
+        """Settings changed: restart cava now, or once we may draw again."""
+        if self._blocked():
             self._audio_stale = True
         else:
             self._hooks.start_audio()
@@ -140,6 +150,13 @@ class WindowGuardian(QObject):
     def _locked(self) -> bool:
         return self._lock is not None and self._lock.locked
 
+    def _covered(self) -> bool:
+        return self._cover is not None and self._cover.covered
+
+    def _blocked(self) -> bool:
+        """Something says "don't draw" even though we have a window to draw on."""
+        return self._locked() or self._covered()
+
     def _pause(self) -> None:
         if not self._paused:
             self._paused = True
@@ -160,23 +177,24 @@ class WindowGuardian(QObject):
         if self._quitting or self._moving:
             return
         if visible:
-            if not self._locked():
+            if not self._blocked():
                 self._unpause()
             return
         self._pause()
         log.info("visualizer surface was closed (output removed or suspended); waiting for a screen")
         self._poke()
 
-    def _on_lock_changed(self, locked: bool) -> None:
+    def _on_blocked_changed(self, blocked: bool, release_delay: int) -> None:
+        """The lock screen or covering windows came or went."""
         if self._quitting:
             return
-        if locked:
-            self._settle.stop()        # no recovery behind the lock screen
+        if blocked:
+            self._settle.stop()        # no recovery while blocked; the release pokes us
             self._pause()
-            self._hooks.stop_audio()
+            self._hooks.stop_audio()   # idempotent: fine if already stopped
             self._audio_stale = True
-        else:
-            self._poke(delay=UNLOCK_SETTLE_MS)
+        elif not self._blocked():      # the *last* reason went away
+            self._poke(delay=release_delay)
 
     def _check_sleep(self) -> None:
         offset = _sleep_offset()
@@ -203,6 +221,8 @@ class WindowGuardian(QObject):
         if self._locked():
             log.info("screen is locked; the visualizer will start after you unlock")
             return                     # the unlock pokes us again
+        if self._covered():
+            return                     # being uncovered pokes us again
         app = QGuiApplication.instance()
         hidden = not self._window.isVisible()
         if hidden and not _has_real_screen(app):

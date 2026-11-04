@@ -180,6 +180,9 @@ FIELDS: tuple[Field, ...] = (
     Field("motion", "peak_gravity", 2.5, "Peak cap fall acceleration (bar-heights per second²)", 0.1, 20.0),
     Field("motion", "idle_fade", True, "Fade the visualizer out when audio goes silent"),
     Field("motion", "idle_timeout", 4.0, "Seconds of silence before fading out", 0.5, 60.0),
+    Field("motion", "pause_when_covered", True,
+          "Pause the visualizer and its audio capture while windows completely cover it: a fullscreen "
+          "game or video, a maximized window, windows tiled over it (KDE Plasma)"),
     # Layout
     Field("layout", "anchor", "bottom", "Screen edge to attach to", choices=("bottom", "top")),
     Field("layout", "direction", "up", "Which way bars and flames grow", choices=("up", "down")),

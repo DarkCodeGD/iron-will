@@ -6,7 +6,7 @@ Data flow::
                                    │                  VisualizerItem (look, physics)
                                    └─ cava keys? ──▶ CavaProcess.restart
     PipeWire ──▶ cava (stdout pipe) ──frame──▶ VisualizerItem.feed ──▶ paint
-    suspend / output loss / lock ──▶ WindowGuardian ──▶ pause, then re-show + restart cava
+    suspend / output loss / lock / covering windows ──▶ WindowGuardian ──▶ pause, then re-show + restart cava
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ from .. import config
 from ..qtcommon import ConfigStore, install_signal_handlers
 from ..util import acquire_lock, setup_logging
 from .cava import CavaProcess
+from .coverwatch import CoverWatcher
 from .guardian import Hooks, WindowGuardian
 from .layout import LayoutModel
 from .lockwatch import LockWatcher
@@ -93,14 +94,24 @@ def main(argv: list[str] | None = None) -> int:
         item.setVisible(True)
 
     # Survive suspend / lid close / monitor unplug instead of quitting with the
-    # last window, and stay paused behind the lock screen. Hiding the item
-    # stops its render timer, so a paused visualizer costs nothing.
+    # last window, and stay paused behind the lock screen and behind windows
+    # that cover it (fullscreen, maximized...). Hiding the item stops its
+    # render timer, so a paused visualizer costs nothing.
+    cover = CoverWatcher(enabled=store.values()["motion.pause_when_covered"], parent=app)
     guardian = WindowGuardian(
         root,
         Hooks(pause=lambda: item.setVisible(False), resume=resume_drawing,
               stop_audio=cava.stop, start_audio=restart_cava),
-        lock=LockWatcher(app), parent=app)
-    store.changed.connect(lambda keys: guardian.request_audio_restart() if keys & config.CAVA_KEYS else None)
+        lock=LockWatcher(app), cover=cover, parent=app)
+
+    def on_settings_changed(keys: set) -> None:
+        if keys & config.CAVA_KEYS:
+            guardian.request_audio_restart()
+        if "motion.pause_when_covered" in keys:
+            cover.set_enabled(store.values()["motion.pause_when_covered"])
+
+    store.changed.connect(on_settings_changed)
     guardian.setObjectName("guardian")
     app.aboutToQuit.connect(cava.stop)
+    app.aboutToQuit.connect(cover.shutdown)
     return app.exec()

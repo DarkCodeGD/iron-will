@@ -29,10 +29,11 @@ PageScaffold {
 
     Card {
         title: "Idle"
-        subtitle: "Get out of the way when nothing is playing"
+        subtitle: "Get out of the way when there is nothing to show"
 
         ToggleRow { id: idleFade; key: "motion.idle_fade"; label: "Fade out on silence"; description: "Also stops repainting entirely — zero CPU while idle" }
         SliderRow { key: "motion.idle_timeout"; label: "Fade after"; unit: " s"; decimals: 1; stepSize: 0.5; enabled: idleFade.checked }
+        ToggleRow { key: "motion.pause_when_covered"; label: "Pause when covered"; description: "Behind fullscreen games and videos or maximized windows: no drawing, no audio capture" }
     }
 
     Card {

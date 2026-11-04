@@ -23,6 +23,7 @@
 
 - **Session sounds:** plays a random track from your library on **login**, **resume from suspend**, and **screen unlock**. A notification with a **Stop** button shows while it plays, the sound appears in Plasma's media controls like any player, and it makes way for your music.
 - **Waits for your password:** after waking up behind the lock screen, both the sound and the visualizer wait until you've unlocked, then start together.
+- **Steps aside behind your windows:** while a fullscreen game or video, a maximized window, or tiled windows cover it, the visualizer stops drawing and stops listening, then fades back in when it's uncovered.
 - **Desktop visualizer:** a click-through spectrum visualizer on the desktop layer, sitting right above your panel. It never steals focus and never covers windows.
 - **Genre presets:** one tap retunes the bounce physics and frequency range for metal, phonk, electronic, hip-hop, calm and more.
 - **Settings app:** a GUI for every setting. Changes auto-save, and the visualizer **updates live** as you drag sliders.
@@ -220,7 +221,7 @@ Set `IRON_WILL_DEBUG=1` for verbose logs.
 
 Everything is stored in one commented file, `~/.config/iron-will/config.toml` (see [`config/config.example.toml`](config/config.example.toml)). You can edit it by hand or in the GUI. Both components pick up changes live. Invalid values fall back to their defaults and never crash anything.
 
-Main groups: `[visualizer]` (mode, bars, spacing, roundness, colors, opacity, fps), `[motion]` (attack/decay, peak physics, idle fade), `[layout]` (edge, grow direction, alignment, size or full screen height, offsets, layer), `[analysis]` (cava sensitivity, frequency range) and `[sounds]` (folder, events, delays, cooldown, volume, player).
+Main groups: `[visualizer]` (mode, bars, spacing, roundness, colors, opacity, fps), `[motion]` (attack/decay, peak physics, idle fade, pause when covered), `[layout]` (edge, grow direction, alignment, size or full screen height, offsets, layer), `[analysis]` (cava sensitivity, frequency range) and `[sounds]` (folder, events, delays, cooldown, volume, player).
 
 ## Architecture
 
@@ -246,6 +247,7 @@ Key design decisions:
 - **Asymmetric EMA physics.** Bars rise with a short time constant and fall with a long one, using `alpha = 1 − e^(−dt/τ)`, so motion looks the same at any frame rate. Peak caps hang, then fall with gravity.
 - **Zero cost when idle.** After the configured silence, the visualizer fades out and stops its render timer completely.
 - **Survives suspend and hot-plug.** When an output disappears (suspend, lid close, unplugged monitor), the compositor closes the layer surface. Qt's default would then quit the app with a *clean* exit that `Restart=on-failure` ignores. Instead, a window guardian pauses rendering, and recovers in **one calm step** once the desktop has settled: it restarts cava (if we slept), then re-shows the bars with a fade-in, and moves them back to their home output when that returns. It detects the wake by watching `CLOCK_BOOTTIME − CLOCK_MONOTONIC` jump. Doing nothing for the first ~2.5 s after a wake matters, because that's when KWin, PipeWire and the network are all reconnecting at once.
+- **Nothing draws behind covering windows.** A Wayland client can't see other windows, so the visualizer loads a small KWin script (`visualizer/kwin/coverwatch.js`, stamped with its PID) over D-Bus. KWin calls back whenever the answer flips: do the windows stacked *above* the visualizer hide its whole rectangle? One geometric rule covers fullscreen, maximized, two windows tiled side by side, or a big window parked on top. Stacking order also respects `layout.layer`: on `top`, normal windows can't cover it. A window counts only while it's on screen: not minimized, on the current virtual desktop and activity, and not made translucent by KWin. Show Desktop comes from KWin's `showingDesktopChanged` signal. The guardian then treats "covered" like "locked": it pauses drawing and stops cava, and fades back in on fresh audio once uncovered. Pausing waits 0.5 s, so dragging a window across the bars doesn't restart cava; coming back takes about 0.25 s. The script is unloaded when the visualizer quits, and replaced if a crash left it behind. Toggle: *Motion → Pause when covered* (`motion.pause_when_covered`).
 - **The lock screen is the gate.** Both components watch `org.freedesktop.ScreenSaver`. After a resume, the daemon asks `GetActive()` instead of trusting signals sent around the suspend; if the screen is locked, the resume sound is held until the unlock. The visualizer's guardian treats "locked" as a hard stop: it pauses drawing, stops cava, and runs its recovery step only after the unlock.
 - **A real lock → unlock, not any signal.** An unlock only counts after a lock was seen, only from the actual ScreenSaver owner, and never between `PrepareForSleep(true)` and `(false)`. The lock screen can flap while the machine goes down, and that used to start a sound that froze mid-suspend.
 - **User daemon, not `system-sleep` hooks.** Root sleep hooks can't reach your PipeWire session. The daemon listens on D-Bus as you, uses `CLOCK_BOOTTIME` for the cooldown (time spent suspended counts), waits for an audio sink with `wpctl` after resume, and holds a kernel `flock` so sounds never overlap across processes.
@@ -257,7 +259,7 @@ iron_will/
   config.py  presets.py  paths.py  accent.py  util.py  qtcommon.py
   dispatcher/   player.py  daemon.py  notify.py  mpris.py  chime.py
   visualizer/   modes.py  dynamics.py  fire.py  ferro.py  bubbles.py  cava.py  physics.py  demo.py  renderer.py  layout.py
-                guardian.py  lockwatch.py  app.py
+                guardian.py  lockwatch.py  coverwatch.py  app.py  kwin/coverwatch.js
                 qml/{Visualizer.qml, WaylandWindow.qml, X11Window.qml}
                 shaders/{fire.frag, ferro.frag, bubbles.frag, *.frag.qsb, build.sh}
   settings/     backend.py  icons.py  app.py  qml/{Main.qml, components/, pages/}

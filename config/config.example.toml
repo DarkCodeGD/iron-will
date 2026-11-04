@@ -41,6 +41,8 @@ peak_gravity = 2.5
 idle_fade = true
 # Seconds of silence before fading out — 0.5 … 60
 idle_timeout = 4.0
+# Pause the visualizer and its audio capture while windows completely cover it: a fullscreen game or video, a maximized window, windows tiled over it (KDE Plasma)
+pause_when_covered = true
 
 # ── Visualizer · fire mode ──────────────────────────────────────
 [fire]
