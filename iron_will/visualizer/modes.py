@@ -23,7 +23,8 @@ class RenderMode:
     tagline: str     # one line shown under the tiles when selected
     icon: str        # SVG file in assets/modes/
     noun: str = "bars"   # what grows ("Which way the … grow")
-    shader: str = ""     # GPU modes: compiled fragment shader in visualizer/shaders/
+    shader: str = ""     # analyzer modes: their own compiled fragment shader in visualizer/shaders/
+                         # (the spectrum modes share SPECTRUM_SHADER instead, see below)
 
     @property
     def icon_path(self) -> Path:
@@ -46,5 +47,11 @@ MODES: tuple[RenderMode, ...] = (
 )
 
 MODE_IDS: tuple[str, ...] = tuple(m.id for m in MODES)
+# Modes driven by their own analyzer and shader, fed 16 analysis bands.
 GPU_MODE_IDS: frozenset[str] = frozenset(m.id for m in MODES if m.shader)
+# Modes that draw the classic spectrum (one value per bar, bar_count bars).
+# They render on the GPU too, all through one shader fed a data texture
+# (visualizer/spectrum.py); only a software scene graph paints them on the CPU.
+SPECTRUM_MODE_IDS: frozenset[str] = frozenset(MODE_IDS) - GPU_MODE_IDS
+SPECTRUM_SHADER = "spectrum.frag.qsb"
 BY_ID: dict[str, RenderMode] = {m.id: m for m in MODES}

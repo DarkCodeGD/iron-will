@@ -12,8 +12,20 @@ settled *and* the fade-out finished, the timer stops completely: zero
 repaints and near-zero CPU while nothing is playing. The next loud frame from
 cava restarts it.
 
-GPU modes (fire, ferrofluid, …)
--------------------------------
+Spectrum modes on the GPU (bars, mirror, wave)
+----------------------------------------------
+These used to be painted here with QPainter: a full-window raster plus a
+window-sized texture upload every frame, up to a whole CPU core at full
+screen height. Now the item only runs the physics and packs the bar heights
+and peaks into a tiny ``SpectrumTexture`` (``spectrum.py``, n × 2 texels).
+One shared shader (``shaders/spectrum.frag``) draws all three from it, with
+the same geometry as the painter below. The painter stays as the fallback for
+a software scene graph. Properties for that shader: ``spectrumActive``,
+``spectrumShader``, ``spectrumWave``, ``spectrumBars``, ``spectrumGrad`` and
+``spectrumColors``.
+
+Analyzer modes (fire, ferrofluid, …)
+------------------------------------
 Modes with a ``shader`` in the registry (``modes.py``) are drawn by a GPU
 fragment shader hosted in ``qml/Visualizer.qml``, not by ``paint()``:
 per-pixel effects would melt the CPU. This item still runs the clock and the
@@ -33,7 +45,8 @@ through one generic set of properties the shader binds to (``gpu*``):
 Each shader gives those slots its own meaning (documented in the shader and
 the analyzer). In a GPU mode the item skips ``update()`` entirely, so no CPU
 texture is rasterised or uploaded. On a software-rendered scene graph (no GPU,
-no shaders) QML sets ``gpuFallback`` and GPU modes simply draw bars.
+no shaders) QML sets ``gpuFallback``: analyzer modes then draw bars, and
+every spectrum mode is painted by ``paint()``.
 """
 
 from __future__ import annotations
@@ -53,8 +66,9 @@ from .demo import DemoSignal
 from .bubbles import PARTICLE_SLOTS, BubbleAnalyzer
 from .ferro import FerroAnalyzer
 from .fire import FireAnalyzer
-from .modes import BY_ID
+from .modes import BY_ID, SPECTRUM_MODE_IDS, SPECTRUM_SHADER
 from .physics import BarPhysics
+from .spectrum import SpectrumTexture
 
 LOUD_THRESHOLD = 0.02   # a frame above this counts as "audio is playing"
 FADE_TAU = 0.35         # seconds — fade in/out time constant
@@ -66,6 +80,7 @@ log = logging.getLogger("iron_will.visualizer")
 # GPU mode id → analyzer class (each follows the contract in fire.py / ferro.py).
 GPU_ANALYZERS = {"fire": FireAnalyzer, "ferro": FerroAnalyzer, "bubbles": BubbleAnalyzer}
 _NO_PARTICLES = [0.0] * (4 * PARTICLE_SLOTS)
+SPECTRUM_STOPS = 6   # color uniforms in spectrum.frag (config.MAX_COLOR_STOPS)
 
 
 def _mirror(values: list[float], total: int) -> list[float]:
@@ -84,6 +99,8 @@ class VisualizerItem(QQuickPaintedItem):
     gpuStyleChanged = Signal()    # config-driven shader values (rare)
     gpuFrame = Signal()           # per-frame shader values (every tick in a GPU mode)
     gpuParticlesChanged = Signal()  # per frame, only in modes with particles
+    fadeChanged = Signal()        # per frame in every shader mode (opacity × fade)
+    spectrumChanged = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -96,6 +113,7 @@ class VisualizerItem(QQuickPaintedItem):
         self._analyzers: dict = {}    # GPU mode id → analyzer, created on first use
         self._gpu = None              # the current mode's analyzer (None for CPU modes)
         self._gpu_fallback = False
+        self._spectrum: SpectrumTexture | None = None   # set from QML (qml/Visualizer.qml)
         self._particle_flat = list(_NO_PARTICLES)
         self._cfg = config.defaults()
         self._colors: list[str] = list(self._cfg["visualizer.colors"])
@@ -139,9 +157,42 @@ class VisualizerItem(QQuickPaintedItem):
 
     demo = Property(bool, _get_demo, _set_demo, notify=demoChanged)
 
+    def _get_spectrum(self):
+        return self._spectrum
+
+    def _set_spectrum(self, item) -> None:
+        if item is not self._spectrum:
+            self._spectrum = item
+            self.spectrumChanged.emit()
+            self.gpuStyleChanged.emit()
+            self._wake()
+
+    spectrum = Property(QObject, _get_spectrum, _set_spectrum, notify=spectrumChanged)
+
     # ── GPU modes → shader uniforms ───────────────────────────────────────
     def _is_gpu(self) -> bool:
+        """An analyzer mode on its own shader (fire, ferrofluid, bubbles)."""
         return self._gpu is not None and not self._gpu_fallback
+
+    def _is_spectrum_gpu(self) -> bool:
+        """Bars, mirror or wave, drawn by spectrum.frag."""
+        return (self._spectrum is not None and not self._gpu_fallback
+                and self._cfg["visualizer.mode"] in SPECTRUM_MODE_IDS)
+
+    def _spectrum_bars(self) -> QVector4D:
+        c = self._cfg
+        return QVector4D(float(c["visualizer.spacing"]), float(c["visualizer.roundness"]),
+                         float(c["visualizer.min_height"]), 1.0 if c["visualizer.peaks"] else 0.0)
+
+    def _spectrum_grad(self) -> QVector4D:
+        c = self._cfg
+        return QVector4D(float(min(len(self._colors), SPECTRUM_STOPS) or 1),
+                         1.0 if c["visualizer.gradient_direction"] == "horizontal" else 0.0,
+                         1.0 if c["layout.direction"] == "up" else 0.0, 0.0)
+
+    def _spectrum_colors(self) -> list:
+        stops = (self._colors or ["#ffffff"])[:SPECTRUM_STOPS]
+        return [QColor(c) for c in stops + [stops[-1]] * (SPECTRUM_STOPS - len(stops))]
 
     def _get_fallback(self) -> bool:
         return self._gpu_fallback
@@ -184,7 +235,14 @@ class VisualizerItem(QQuickPaintedItem):
     gpuColsD = Property(QVector4D, lambda self: self._cols(12), notify=gpuFrame)
     gpuMotion = Property(QVector4D, lambda self: self._frame("motion"), notify=gpuFrame)
     gpuExtra = Property(QVector4D, lambda self: self._frame("extra"), notify=gpuFrame)
-    gpuOpacity = Property(float, lambda self: self._cfg["visualizer.opacity"] * self._fade, notify=gpuFrame)
+    gpuOpacity = Property(float, lambda self: self._cfg["visualizer.opacity"] * self._fade, notify=fadeChanged)
+    spectrumActive = Property(bool, _is_spectrum_gpu, notify=gpuStyleChanged)
+    spectrumShader = Property(str, lambda self: QUrl.fromLocalFile(str(SHADER_DIR / SPECTRUM_SHADER)).toString(),
+                              constant=True)
+    spectrumWave = Property(bool, lambda self: self._cfg["visualizer.mode"] == "wave", notify=gpuStyleChanged)
+    spectrumBars = Property(QVector4D, _spectrum_bars, notify=gpuStyleChanged)
+    spectrumGrad = Property(QVector4D, _spectrum_grad, notify=gpuStyleChanged)
+    spectrumColors = Property("QVariantList", _spectrum_colors, notify=gpuStyleChanged)
 
     def _particles(self) -> list:
         return self._particle_flat
@@ -222,8 +280,10 @@ class VisualizerItem(QQuickPaintedItem):
         self._last_loud = float("-inf")
         self._particle_flat = list(_NO_PARTICLES)
         self.update()
+        self._upload_spectrum()
         self.gpuParticlesChanged.emit()
         self.gpuFrame.emit()
+        self.fadeChanged.emit()
 
     # ── config ────────────────────────────────────────────────────────────
     def _on_store_changed(self, _keys) -> None:
@@ -293,16 +353,33 @@ class VisualizerItem(QQuickPaintedItem):
             if hasattr(self._gpu, "particles"):
                 self._publish_particles()
             self.gpuFrame.emit()  # the shader redraws; nothing to paint here
+            self.fadeChanged.emit()
             # GPU modes keep moving through silence (fire's pilot light, the
             # liquid's ripples) until the idle fade has taken them out.
             quiet = silent_for > 0.5 and self._fade == 0.0
         else:
-            self.update()
+            if self._is_spectrum_gpu():
+                self._upload_spectrum()      # a 2 KB texture instead of a full-window raster
+                self.fadeChanged.emit()
+            else:
+                self.update()                # software scene graph: paint() below
             quiet = silent_for > 0.5 and self._physics.settled() and self._fade == goal
         if not self._demo and quiet:
             self._timer.stop()
 
-    # ── painting ──────────────────────────────────────────────────────────
+    def _spectrum_values(self) -> tuple[list[float], list[float]]:
+        """The bars as drawn: mirror mode shows every band twice, bass in the middle."""
+        values, peaks = self._physics.values, self._physics.peaks
+        if self._cfg["visualizer.mode"] == "mirror":
+            total = self._cfg["visualizer.bar_count"]
+            values, peaks = _mirror(values, total), _mirror(peaks, total)
+        return values, peaks
+
+    def _upload_spectrum(self) -> None:
+        if self._is_spectrum_gpu():
+            self._spectrum.upload(*self._spectrum_values())
+
+    # ── painting (software fallback) ──────────────────────────────────────
     def _get_brush(self, w: float, h: float, up: bool) -> QBrush:
         c = self._cfg
         key = (w, h, up, tuple(self._colors), c["visualizer.gradient_direction"])
@@ -325,7 +402,8 @@ class VisualizerItem(QQuickPaintedItem):
         w, h = self.width(), self.height()
         c = self._cfg
         alpha = c["visualizer.opacity"] * self._fade
-        if w < 2 or h < 2 or alpha <= 0.003 or not self._physics.values or self._is_gpu():
+        if (w < 2 or h < 2 or alpha <= 0.003 or not self._physics.values
+                or self._is_gpu() or self._is_spectrum_gpu()):
             return
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(Qt.PenStyle.NoPen)
@@ -333,13 +411,8 @@ class VisualizerItem(QQuickPaintedItem):
 
         up = c["layout.direction"] == "up"
         brush = self._get_brush(w, h, up)
-        values, peaks = self._physics.values, self._physics.peaks
-        mode = c["visualizer.mode"]
-        if mode == "mirror":
-            total = c["visualizer.bar_count"]
-            values, peaks = _mirror(values, total), _mirror(peaks, total)
-
-        if mode == "wave":
+        values, peaks = self._spectrum_values()
+        if c["visualizer.mode"] == "wave":
             self._paint_wave(painter, values, w, h, up, brush, alpha)
         else:
             self._paint_bars(painter, values, peaks, w, h, up, brush, alpha)
@@ -418,7 +491,9 @@ class VisualizerItem(QQuickPaintedItem):
 
 
 def register_qml_types() -> None:
-    """``VisualizerItem`` (the CPU painter + clock) and ``Visualizer`` (the
-    component windows and the preview use: that item plus the GPU shader)."""
+    """``VisualizerItem`` (clock, physics, software painter), ``SpectrumTexture``
+    (its data for the spectrum shader) and ``Visualizer`` (the component windows
+    and the preview use: all of that plus the shaders)."""
     qmlRegisterType(VisualizerItem, QML_URI, 1, 0, "VisualizerItem")
+    qmlRegisterType(SpectrumTexture, QML_URI, 1, 0, "SpectrumTexture")
     qmlRegisterType(QUrl.fromLocalFile(str(QML_DIR / "Visualizer.qml")), QML_URI, 1, 0, "Visualizer")

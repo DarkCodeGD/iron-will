@@ -1,12 +1,16 @@
 // The visualizer as both the desktop windows and the settings preview use it:
 //
-//   VisualizerItem — clock, physics, fade, and the CPU painter for bars /
-//                    mirror / wave. In a GPU mode (fire, ferrofluid, …) it
-//                    paints nothing and publishes the mode's state as gpu*
-//                    properties instead.
-//   ShaderEffect   — the GPU mode's fragment shader (named by the mode
-//                    registry), bound to those properties through one
-//                    generic set of uniforms. Hidden — and free — in CPU modes.
+//   VisualizerItem  — clock, physics, fade. It paints nothing itself unless
+//                     the scene graph is software-only (then it's the CPU
+//                     fallback painter for every mode).
+//   spectrum shader — bars, mirror and wave: VisualizerItem packs the bar
+//                     heights into SpectrumTexture (n × 2 texels, hidden),
+//                     ShaderEffectSource hands that to spectrum.frag.
+//   analyzer shader — fire, ferrofluid, bubbles: the mode's own fragment
+//                     shader (named by the mode registry), bound to the gpu*
+//                     properties through one generic set of uniforms.
+//
+// Only the current mode's shader is visible; a hidden ShaderEffect costs nothing.
 import QtQuick
 import IronWill 1.0
 
@@ -15,14 +19,51 @@ Item {
     property alias store: vis.store
     property alias demo: vis.demo
 
+    // The bar heights as a texture. Never shown: ShaderEffectSource renders it
+    // off-screen, at exactly one texel per value (see visualizer/spectrum.py).
+    SpectrumTexture {
+        id: spectrumData
+        visible: false
+    }
+    ShaderEffectSource {
+        id: spectrumSource
+        sourceItem: spectrumData
+        hideSource: true
+        visible: false
+        smooth: false                 // nearest: texels are data
+        textureSize: Qt.size(spectrumData.width, spectrumData.height)
+    }
+
     VisualizerItem {
         id: vis
         objectName: "visualizer"   // app.py finds the item by this name
         anchors.fill: parent
+        spectrum: spectrumData
         // No GPU (software scene graph) means no shaders: GPU modes fall back to bars.
         gpuFallback: GraphicsInfo.api === GraphicsInfo.Software
     }
 
+    // Bars, mirror, wave.
+    ShaderEffect {
+        anchors.fill: parent
+        visible: vis.visible && vis.spectrumActive && vis.gpuOpacity > 0.003
+        opacity: vis.gpuOpacity           // → qt_Opacity
+        blending: true
+        fragmentShader: vis.spectrumShader
+
+        property var spectrum: spectrumSource
+        property vector4d res: Qt.vector4d(width, height, spectrumData.width, vis.spectrumWave ? 1 : 0)
+        property vector4d bars: vis.spectrumBars
+        property vector4d grad: vis.spectrumGrad
+        property color c0: vis.spectrumColors[0]
+        property color c1: vis.spectrumColors[1]
+        property color c2: vis.spectrumColors[2]
+        property color c3: vis.spectrumColors[3]
+        property color c4: vis.spectrumColors[4]
+        property color c5: vis.spectrumColors[5]
+    }
+
+    // Fire, ferrofluid, bubbles.
     ShaderEffect {
         anchors.fill: parent
         visible: vis.visible && vis.gpuActive && vis.gpuShader !== "" && vis.gpuOpacity > 0.003
