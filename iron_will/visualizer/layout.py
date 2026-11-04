@@ -79,6 +79,16 @@ class LayoutModel(QObject):
             anchors |= ANCHOR_LEFT
             left = rel_x
         # (plain center: no horizontal anchor → compositor centers it)
+        if v["layout.full_height"]:
+            # Span edge to edge and let the compositor size it, like a panel
+            # does. Qt on Wayland can't see panels (availableGeometry is the
+            # whole screen), so a computed height came out a panel too tall
+            # and the top hung off-screen, clipping tall flames. With both
+            # vertical edges anchored, layer-shell-qt asks for height 0 =
+            # "whatever fits between them"; the height below only seeds the
+            # first frame. (X11 ignores anchors and uses x/y/height, where
+            # availableGeometry does know the panels.)
+            anchors |= ANCHOR_TOP | ANCHOR_BOTTOM
 
         x = screen.x() + rel_x
         y = screen.y() + my if top else screen.y() + screen.height() - height - my

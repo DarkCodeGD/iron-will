@@ -55,6 +55,12 @@ function rect(g) {
     return { x: g.x, y: g.y, w: g.width, h: g.height };
 }
 
+function intersect(a, b) {
+    const x = Math.max(a.x, b.x), y = Math.max(a.y, b.y);
+    return { x: x, y: y, w: Math.max(0, Math.min(a.x + a.w, b.x + b.w) - x),
+             h: Math.max(0, Math.min(a.y + a.h, b.y + b.h) - y) };
+}
+
 // r minus c, as up to four rectangles (bands above and below, slices beside).
 function subtract(r, c) {
     const x1 = Math.max(r.x, c.x), y1 = Math.max(r.y, c.y);
@@ -72,7 +78,13 @@ function isCovered(gone) {
     const stack = workspace.stackingOrder;           // bottom → top
     const index = stack.findIndex(w => w.pid === VISUALIZER_PID && w !== gone && !w.deleted);
     if (index < 0) return false;                     // not mapped (yet)
-    const target = rect(stack[index].frameGeometry);
+    // Only the part on its monitor can be seen. A surface can hang off the
+    // screen: with full height, Qt on Wayland doesn't know the panel's size,
+    // so the window is a panel-height too tall and its top sits off-screen.
+    // Counting that sliver as "uncovered" meant it never paused.
+    const self = stack[index];
+    const target = self.output ? intersect(rect(self.frameGeometry), rect(self.output.geometry))
+                               : rect(self.frameGeometry);
     const area = target.w * target.h;
     if (area <= 0) return false;
 
